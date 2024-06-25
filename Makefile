@@ -9,7 +9,7 @@ confirm:
 ## db/migrations/down: password=$1 apply all down database migrations
 .PHONY: db/migrations/down
 db/migrations/down: confirm
-	migrate -path="./migrations" -database "postgres://realworld:${password}@localhost/realworld?sslmode=disable" down
+	migrate -path="./migrations" -database "postgres://postgres:${password}@localhost/postgres?sslmode=disable" down
 
 ## db/migrations/new name=$1: create a new database migration
 .PHONY: db/migrations/new
@@ -19,7 +19,7 @@ db/migrations/new:
 ## db/migrations/up: password=$1 apply all up database migrations
 .PHONY: db/migrations/up
 db/migrations/up: confirm
-	migrate -path="./migrations" -database "postgres://realworld:${password}@localhost/realworld?sslmode=disable" up
+	migrate -path="./migrations" -database "postgres://postgres:${password}@localhost/postgres?sslmode=disable" up
 
 .PHONY: down
 down:
@@ -33,6 +33,14 @@ run/api:
 up:
 	docker compose up --detach --wait
 
+.PHONY: up/build
+up/build:
+	docker compose up --detach --wait --build
+
 .PHONY: up/db
 up/db:
-	docker compose up postgres --detach --wait
+	docker compose up migrations --detach --wait
+
+.PHONY: up/db/build
+up/db/build:
+	docker compose up migrations --detach --wait --build

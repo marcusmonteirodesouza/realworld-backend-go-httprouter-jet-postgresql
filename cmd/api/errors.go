@@ -17,6 +17,16 @@ type errorResponseErrors struct {
 func (app *application) writeErrorResponse(w http.ResponseWriter, status int, err error) {
 	app.logger.StandardLogger(logging.Error).Print(err.Error())
 
+	if status == http.StatusServiceUnavailable {
+		app.writeJSON(w, status, errorResponse{
+			errors: errorResponseErrors{
+				body: []string{"Service unavailable"},
+			},
+		}, nil)
+
+		return
+	}
+
 	app.writeJSON(w, status, errorResponse{
 		errors: errorResponseErrors{
 			body: []string{"Internal server error"},

@@ -22,6 +22,7 @@ type config struct {
 
 type application struct {
 	config *config
+	db     *sql.DB
 	logger *logging.Logger
 	wg     sync.WaitGroup
 }
@@ -105,6 +106,7 @@ func main() {
 	}
 
 	app := &application{
+		db:     db,
 		config: config,
 		logger: logger,
 	}
