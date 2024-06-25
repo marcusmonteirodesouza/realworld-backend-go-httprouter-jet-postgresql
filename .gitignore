@@ -154,3 +154,15 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/go,visualstudiocode,macos,linux,windows,terraform
+
+# .env
+.env
+
+# bin
+bin
+
+# Postgres data
+postgres-data
+
+# temp
+tmp

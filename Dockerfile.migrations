@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG MIGRATE_VERSION=4.17.1
+
+ENV POSTGRES_DB POSTGRES_DB
+ENV POSTGRES_HOST POSTGRES_HOST
+ENV POSTGRES_PASSWORD POSTGRES_PASSWORD
+ENV POSTGRES_PORT POSTGRES_PORT
+ENV POSTGRES_USER POSTGRES_USER
+
+WORKDIR /app
+COPY . .
+
+RUN apt-get update && \ 
+  apt-get install -y curl && \
+  curl -L "https://github.com/golang-migrate/migrate/releases/download/v${MIGRATE_VERSION}/migrate.linux-386.tar.gz" | tar xvz
+
+ENTRYPOINT ./migrate -path=./migrations -database postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable up
