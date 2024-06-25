@@ -5,7 +5,7 @@ WORKDIR /app
 COPY . .
 
 RUN go mod download && \
-    make build/api
+    make build
 
 FROM gcr.io/distroless/static-debian11
 

@@ -1,35 +1,57 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 
 	"cloud.google.com/go/logging"
+	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
 )
 
 type errorResponse struct {
-	errors errorResponseErrors
+	Errors errorResponseErrors `json:"errors"`
 }
 
 type errorResponseErrors struct {
-	body []string
+	Body []string `json:"body"`
 }
 
-func (app *application) writeErrorResponse(w http.ResponseWriter, status int, err error) {
+func (app *application) writeErrorResponse(w http.ResponseWriter, err error) {
 	app.logger.StandardLogger(logging.Error).Print(err.Error())
 
-	if status == http.StatusServiceUnavailable {
-		app.writeJSON(w, status, errorResponse{
-			errors: errorResponseErrors{
-				body: []string{"Service unavailable"},
-			},
-		}, nil)
+	var msg string
+	var status int
 
-		return
+	var alreadyExistsError *services.AlreadyExistsError
+	var invalidArgumentError *services.InvalidArgumentError
+
+	var malformedRequest *malformedRequest
+
+	switch {
+	case errors.As(err, &alreadyExistsError):
+		msg = err.Error()
+		status = http.StatusConflict
+
+	case errors.As(err, &invalidArgumentError):
+		msg = err.Error()
+		status = http.StatusUnprocessableEntity
+
+	case errors.As(err, &malformedRequest):
+		msg = malformedRequest.Error()
+		status = http.StatusBadRequest
+
+	default:
+		msg = "Internal server error"
+		status = http.StatusInternalServerError
 	}
 
-	app.writeJSON(w, status, errorResponse{
-		errors: errorResponseErrors{
-			body: []string{"Internal server error"},
+	err = writeJSON(w, status, errorResponse{
+		Errors: errorResponseErrors{
+			Body: []string{msg},
 		},
 	}, nil)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }

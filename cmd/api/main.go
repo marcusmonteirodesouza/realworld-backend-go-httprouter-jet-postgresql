@@ -14,6 +14,8 @@ import (
 	"cloud.google.com/go/logging"
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
+
+	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
 )
 
 type config struct {
@@ -21,10 +23,11 @@ type config struct {
 }
 
 type application struct {
-	config *config
-	db     *sql.DB
-	logger *logging.Logger
-	wg     sync.WaitGroup
+	config       *config
+	db           *sql.DB
+	logger       *logging.Logger
+	usersService *services.UsersService
+	wg           sync.WaitGroup
 }
 
 func main() {
@@ -47,6 +50,21 @@ func main() {
 	defer loggingClient.Close()
 
 	logger := loggingClient.Logger(googleCloudRunService, logging.RedirectAsJSON(os.Stdout))
+
+	jwtIss := os.Getenv("JWT_ISS")
+	if jwtIss == "" {
+		logger.StandardLogger(logging.Critical).Fatal("Environment variable JWT_ISS is required")
+	}
+
+	jwtKey := os.Getenv("JWT_KEY")
+	if jwtKey == "" {
+		logger.StandardLogger(logging.Critical).Fatal("Environment variable JWT_KEY is required")
+	}
+
+	jwtValidForSeconds, err := strconv.Atoi(os.Getenv("JWT_VALID_FOR_SECONDS"))
+	if err != nil {
+		logger.StandardLogger(logging.Critical).Fatal("Environment variable JWT_VALID_FOR_SECONDS is required and must be an integer")
+	}
 
 	port, err := strconv.Atoi(os.Getenv("PORT"))
 	if err != nil {
@@ -106,9 +124,10 @@ func main() {
 	}
 
 	app := &application{
-		db:     db,
-		config: config,
-		logger: logger,
+		db:           db,
+		config:       config,
+		logger:       logger,
+		usersService: services.NewUsersService(db, *services.NewUsersServiceJWT(jwtIss, []byte(jwtKey), jwtValidForSeconds), logger),
 	}
 
 	err = app.serve(ctx)
