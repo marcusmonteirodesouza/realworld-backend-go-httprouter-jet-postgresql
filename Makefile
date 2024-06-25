@@ -30,6 +30,10 @@ db/migrations/up: confirm
 down:
 	docker compose down
 
+.PHONY: format
+format:
+	go fmt ./... && npx prettier --write .
+
 ## jet password=$1: run Jet generator 
 .PHONY: jet
 jet:

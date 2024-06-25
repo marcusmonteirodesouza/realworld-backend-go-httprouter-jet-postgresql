@@ -15,3 +15,11 @@ type InvalidArgumentError struct {
 func (err *InvalidArgumentError) Error() string {
 	return err.msg
 }
+
+type NotFoundError struct {
+	msg string
+}
+
+func (err *NotFoundError) Error() string {
+	return err.msg
+}

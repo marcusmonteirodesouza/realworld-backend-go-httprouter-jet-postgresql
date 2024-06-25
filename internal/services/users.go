@@ -3,13 +3,16 @@ package services
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/mail"
 	"time"
 
 	"cloud.google.com/go/logging"
 	. "github.com/go-jet/jet/v2/postgres"
+	"github.com/go-jet/jet/v2/qrm"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/.gen/realworld/public/model"
 	. "github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/.gen/realworld/public/table"
 )
@@ -90,6 +93,40 @@ func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser
 	return &user, nil
 }
 
+func (usersService *UsersService) GetUserByEmail(ctx context.Context, email string) (*model.Users, error) {
+	user := model.Users{}
+
+	selectStmt := SELECT(Users.AllColumns).FROM(Users).WHERE(Users.Email.EQ(String(email)))
+
+	err := selectStmt.QueryContext(ctx, usersService.db, &user)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("Email %s not found", email)}
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (usersService *UsersService) CheckPassword(ctx context.Context, userId uuid.UUID, password string) (*bool, error) {
+	var dest struct {
+		IsCorrectPassword bool
+	}
+
+	checkPasswordStmt := SELECT(Users.PasswordHash.EQ(StringExp(Func("crypt", String(password), Users.PasswordHash))).AS("is_correct_password")).FROM(Users).WHERE(Users.ID.EQ(UUID(userId)))
+
+	err := checkPasswordStmt.QueryContext(ctx, usersService.db, &dest)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("User %s not found", userId)}
+		}
+		return nil, err
+	}
+
+	return &dest.IsCorrectPassword, nil
+}
+
 func (usersService *UsersService) GetToken(user *model.Users) (*string, error) {
 	now := time.Now()
 
@@ -122,7 +159,7 @@ func (usersService *UsersService) hashPassword(ctx context.Context, password str
 		PasswordHash string
 	}
 
-	hashPasswordStmt := SELECT(StringExp(Func("crypt", String(password), Func("gen_salt", String("bf")))))
+	hashPasswordStmt := SELECT(StringExp(Func("crypt", String(password), Func("gen_salt", String("bf")))).AS("password_hash"))
 
 	err := hashPasswordStmt.QueryContext(ctx, usersService.db, &dest)
 	if err != nil {
@@ -143,6 +180,7 @@ func (usersService *UsersService) validateEmail(ctx context.Context, email strin
 	}
 
 	emailExistsStmt := SELECT(EXISTS(Users.SELECT(Users.ID).WHERE(Users.Email.EQ(String(email)))).AS("email_exists"))
+
 	err = emailExistsStmt.QueryContext(ctx, usersService.db, &dest)
 	if err != nil {
 		return err
@@ -161,6 +199,7 @@ func (usersService *UsersService) validateUsername(ctx context.Context, username
 	}
 
 	usernameExistsStmt := SELECT(EXISTS(Users.SELECT(Users.ID).WHERE(Users.Username.EQ(String(username)))).AS("username_exists"))
+
 	err := usernameExistsStmt.QueryContext(ctx, usersService.db, &dest)
 	if err != nil {
 		return err
