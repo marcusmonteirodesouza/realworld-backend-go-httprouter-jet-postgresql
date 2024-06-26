@@ -82,16 +82,12 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst interface{}) err
 	return nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, data any,
-	headers http.Header) error {
+func writeJSON(w http.ResponseWriter, status int, data any) error {
 	json, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
 
-	for key, value := range headers {
-		w.Header()[key] = value
-	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
@@ -144,8 +140,7 @@ func (app *application) writeErrorResponse(w http.ResponseWriter, err error) {
 	err = writeJSON(w, status, errorResponse{
 		Errors: errorResponseErrors{
 			Body: []string{msg},
-		},
-	}, nil)
+		}})
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
