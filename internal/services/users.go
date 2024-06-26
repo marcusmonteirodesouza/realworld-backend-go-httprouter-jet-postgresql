@@ -3,9 +3,11 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"time"
 
 	"cloud.google.com/go/logging"
@@ -43,7 +45,7 @@ func NewUsersServiceJWT(iss string, key []byte, validForSeconds int) *UsersServi
 	return &UsersServiceJWT{
 		iss:             iss,
 		key:             key,
-		parser:          *jwt.NewParser(jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired(), jwt.WithIssuer(iss)),
+		parser:          *jwt.NewParser(jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithIssuer(iss)),
 		signinMethod:    jwt.SigningMethodHS256,
 		validForSeconds: validForSeconds,
 	}
@@ -63,8 +65,36 @@ func NewRegisterUser(email string, username string, password string) RegisterUse
 	}
 }
 
+type UpdateUser struct {
+	Email    *string
+	Username *string
+	Password *string
+	Bio      *string
+	Image    *string
+}
+
+func NewUpdateUser(email *string, username *string, password *string, bio *string, image *string) UpdateUser {
+	return UpdateUser{
+		Email:    email,
+		Username: username,
+		Password: password,
+		Bio:      bio,
+		Image:    image,
+	}
+}
+
 func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser RegisterUser) (*model.Users, error) {
-	usersService.logger.StandardLogger(logging.Info).Printf("Registering user. Email: %s, Username: %s", registerUser.Email, registerUser.Username)
+	type registerUserForLogging struct {
+		Email    string
+		Username string
+	}
+
+	if registerUserForLoggingBytes, err := json.Marshal(registerUserForLogging{
+		Email:    registerUser.Email,
+		Username: registerUser.Username,
+	}); err == nil {
+		usersService.logger.StandardLogger(logging.Info).Printf("Registering user. %s", string(registerUserForLoggingBytes))
+	}
 
 	err := usersService.validateEmail(ctx, registerUser.Email)
 	if err != nil {
@@ -146,6 +176,84 @@ func (usersService *UsersService) GetUserByToken(ctx context.Context, token stri
 	}
 
 	user, err := usersService.GetUserById(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UUID, updateUser UpdateUser) (*model.Users, error) {
+	type updateUserForLogging struct {
+		Email            *string
+		Username         *string
+		UpdatingPassword bool
+		Bio              *string
+		Image            *string
+	}
+
+	if updateUserForLoggingBytes, err := json.Marshal(updateUserForLogging{
+		Email:            updateUser.Email,
+		Username:         updateUser.Username,
+		UpdatingPassword: updateUser.Password != nil,
+		Bio:              updateUser.Bio,
+		Image:            updateUser.Image,
+	}); err == nil {
+		usersService.logger.StandardLogger(logging.Info).Printf("Updating user %s. %s", userId, string(updateUserForLoggingBytes))
+	}
+
+	user, err := usersService.GetUserById(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	if updateUser.Email != nil && *updateUser.Email != user.Email {
+		err = usersService.validateEmail(ctx, *updateUser.Email)
+		if err != nil {
+			return nil, err
+		}
+
+		user.Email = *updateUser.Email
+	}
+
+	if updateUser.Username != nil && *updateUser.Username != user.Username {
+		err = usersService.validateUsername(ctx, *updateUser.Username)
+		if err != nil {
+			return nil, err
+		}
+
+		user.Username = *updateUser.Username
+	}
+
+	if updateUser.Password != nil {
+		passwordHash, err := usersService.hashPassword(ctx, *updateUser.Password)
+		if err != nil {
+			return nil, err
+		}
+
+		user.PasswordHash = *passwordHash
+	}
+
+	if updateUser.Bio != user.Bio {
+		user.Bio = updateUser.Bio
+	}
+
+	if updateUser.Image != user.Image {
+		err = usersService.validateImage(*updateUser.Image)
+		if err != nil {
+			return nil, err
+		}
+
+		user.Image = updateUser.Image
+	}
+
+	now := time.Now()
+
+	user.UpdatedAt = &now
+
+	updateStmt := Users.UPDATE(Users.Email, Users.Username, Users.PasswordHash, Users.Bio, Users.Image, Users.UpdatedAt).MODEL(user).WHERE(Users.ID.EQ(UUID(user.ID))).RETURNING(Users.AllColumns)
+
+	err = updateStmt.QueryContext(ctx, usersService.db, user)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +359,15 @@ func (usersService *UsersService) validateUsername(ctx context.Context, username
 
 	if dest.UsernameExists {
 		return &AlreadyExistsError{msg: "Username is taken"}
+	}
+
+	return nil
+}
+
+func (usersService *UsersService) validateImage(image string) error {
+	_, err := url.ParseRequestURI(image)
+	if err != nil {
+		return &InvalidArgumentError{msg: fmt.Sprintf("Invalid image URL %s", image)}
 	}
 
 	return nil
