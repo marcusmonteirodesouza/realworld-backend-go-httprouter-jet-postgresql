@@ -26,6 +26,18 @@ type loginRequestUser struct {
 	Password string `json:"password"`
 }
 
+type updateUserRequest struct {
+	User updateUserRequestUser `json:"user"`
+}
+
+type updateUserRequestUser struct {
+	Email    *string `json:"email"`
+	Username *string `json:"username"`
+	Password *string `json:"password"`
+	Bio      *string `json:"bio"`
+	Image    *string `json:"image"`
+}
+
 type userResponse struct {
 	User userResponseUser `json:"user"`
 }
@@ -132,6 +144,35 @@ func (app *application) registerUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userResponse := newUserResponse(user.Email, *token, user.Username, user.Bio, user.Image)
+
+	err = writeJSON(w, http.StatusCreated, userResponse)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
+func (app *application) updateUser(w http.ResponseWriter, r *http.Request) {
+	var request updateUserRequest
+
+	err := decodeJSONBody(w, r, &request)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	token := app.contextGetToken(r)
+
+	updatedUser, err := app.usersService.UpdateUser(ctx, user.ID, services.NewUpdateUser(request.User.Email, request.User.Username, request.User.Password, request.User.Bio, request.User.Image))
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	userResponse := newUserResponse(updatedUser.Email, token, updatedUser.Username, updatedUser.Bio, updatedUser.Image)
 
 	err = writeJSON(w, http.StatusCreated, userResponse)
 	if err != nil {
