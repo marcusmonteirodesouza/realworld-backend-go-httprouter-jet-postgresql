@@ -1,26 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/julienschmidt/httprouter"
 )
 
-func (app *application) recoverPanic(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				w.Header().Set("Connection:", "close")
-				app.writeErrorResponse(w, fmt.Errorf("%s", err))
-			}
-		}()
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (app *application) authenticate(next http.HandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (app *application) authenticate(h httprouter.Handle) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		token := getToken(r)
 
 		if token == "" {
@@ -28,24 +16,24 @@ func (app *application) authenticate(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		app.serveHTTPAuthenticated(next, w, r, token)
-	})
+		app.serveHTTPAuthenticated(h, w, r, ps, token)
+	}
 }
 
-func (app *application) authenticateOptional(next http.HandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (app *application) authenticateOptional(h httprouter.Handle) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		token := getToken(r)
 
 		if token == "" {
-			next.ServeHTTP(w, r)
+			h(w, r, ps)
 			return
 		}
 
-		app.serveHTTPAuthenticated(next, w, r, token)
-	})
+		app.serveHTTPAuthenticated(h, w, r, ps, token)
+	}
 }
 
-func (app *application) serveHTTPAuthenticated(next http.Handler, w http.ResponseWriter, r *http.Request, token string) {
+func (app *application) serveHTTPAuthenticated(h httprouter.Handle, w http.ResponseWriter, r *http.Request, ps httprouter.Params, token string) {
 	ctx := r.Context()
 
 	user, err := app.usersService.GetUserByToken(ctx, token)
@@ -57,7 +45,7 @@ func (app *application) serveHTTPAuthenticated(next http.Handler, w http.Respons
 	r = app.contextSetUser(r, user)
 	r = app.contextSetToken(r, token)
 
-	next.ServeHTTP(w, r)
+	h(w, r, ps)
 }
 
 func getToken(r *http.Request) string {

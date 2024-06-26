@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
 )
 
@@ -62,7 +63,7 @@ func newUserResponse(email string, token string, username string, bio *string, i
 	}
 }
 
-func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request) {
+func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	user := app.contextGetUser(r)
 	token := app.contextGetToken(r)
 
@@ -74,7 +75,7 @@ func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (app *application) login(w http.ResponseWriter, r *http.Request) {
+func (app *application) login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var request loginRequest
 
 	err := decodeJSONBody(w, r, &request)
@@ -120,7 +121,7 @@ func (app *application) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (app *application) registerUser(w http.ResponseWriter, r *http.Request) {
+func (app *application) registerUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var request registerUserRequest
 
 	err := decodeJSONBody(w, r, &request)
@@ -151,7 +152,7 @@ func (app *application) registerUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (app *application) updateUser(w http.ResponseWriter, r *http.Request) {
+func (app *application) updateUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var request updateUserRequest
 
 	err := decodeJSONBody(w, r, &request)
@@ -174,7 +175,7 @@ func (app *application) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	userResponse := newUserResponse(updatedUser.Email, token, updatedUser.Username, updatedUser.Bio, updatedUser.Image)
 
-	err = writeJSON(w, http.StatusCreated, userResponse)
+	err = writeJSON(w, http.StatusOK, userResponse)
 	if err != nil {
 		app.writeErrorResponse(w, err)
 	}

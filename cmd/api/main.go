@@ -23,11 +23,12 @@ type config struct {
 }
 
 type application struct {
-	config       *config
-	db           *sql.DB
-	logger       *logging.Logger
-	usersService *services.UsersService
-	wg           sync.WaitGroup
+	config          *config
+	db              *sql.DB
+	logger          *logging.Logger
+	profilesService *services.ProfilesService
+	usersService    *services.UsersService
+	wg              sync.WaitGroup
 }
 
 func main() {
@@ -123,11 +124,16 @@ func main() {
 		port: port,
 	}
 
+	usersService := services.NewUsersService(db, *services.NewUsersServiceJWT(jwtIss, []byte(jwtKey), jwtValidForSeconds), logger)
+
+	profilesService := services.NewProfilesService(db, logger, usersService)
+
 	app := &application{
-		db:           db,
-		config:       config,
-		logger:       logger,
-		usersService: services.NewUsersService(db, *services.NewUsersServiceJWT(jwtIss, []byte(jwtKey), jwtValidForSeconds), logger),
+		db:              db,
+		config:          config,
+		logger:          logger,
+		profilesService: profilesService,
+		usersService:    usersService,
 	}
 
 	err = app.serve(ctx)

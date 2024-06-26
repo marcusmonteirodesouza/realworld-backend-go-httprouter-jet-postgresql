@@ -9,12 +9,16 @@ import (
 func (app *application) routes() http.Handler {
 	router := httprouter.New()
 
-	router.HandlerFunc(http.MethodGet, "/healthz", app.healthcheck)
+	router.GET("/healthz", app.healthcheck)
 
-	router.HandlerFunc(http.MethodGet, "/user", app.authenticate(app.getCurrentUser))
-	router.HandlerFunc(http.MethodPost, "/users/login", app.login)
-	router.HandlerFunc(http.MethodPost, "/users", app.registerUser)
-	router.HandlerFunc(http.MethodPut, "/user", app.authenticate(app.updateUser))
+	router.GET("/user", app.authenticate(app.getCurrentUser))
+	router.POST("/users", app.registerUser)
+	router.POST("/users/login", app.login)
+	router.PUT("/user", app.authenticate(app.updateUser))
 
-	return app.recoverPanic(router)
+	router.GET("/profiles/:username", app.authenticateOptional(app.getProfile))
+	router.POST("/profiles/:username/follow", app.authenticate(app.followUser))
+	router.DELETE("/profiles/:username/follow", app.authenticate(app.unfollowUser))
+
+	return router
 }
