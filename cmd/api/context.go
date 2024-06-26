@@ -26,7 +26,7 @@ func (app *application) contextSetToken(r *http.Request, token string) *http.Req
 func (app *application) contextGetUser(r *http.Request) *model.Users {
 	user, ok := r.Context().Value(userContextKey).(*model.Users)
 	if !ok {
-		panic("Missing user value in request context")
+		return nil
 	}
 
 	return user
@@ -35,7 +35,7 @@ func (app *application) contextGetUser(r *http.Request) *model.Users {
 func (app *application) contextGetToken(r *http.Request) string {
 	token, ok := r.Context().Value(tokenContextKey).(string)
 	if !ok {
-		panic("Missing token value in request context")
+		return ""
 	}
 
 	return token

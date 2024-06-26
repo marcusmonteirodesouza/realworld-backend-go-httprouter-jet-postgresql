@@ -159,6 +159,22 @@ func (usersService *UsersService) GetUserByEmail(ctx context.Context, email stri
 	return &user, nil
 }
 
+func (usersService *UsersService) GetUserByUsername(ctx context.Context, username string) (*model.Users, error) {
+	user := model.Users{}
+
+	selectStmt := SELECT(Users.AllColumns).FROM(Users).WHERE(Users.Username.EQ(String(username)))
+
+	err := selectStmt.QueryContext(ctx, usersService.db, &user)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("Username %s not found", username)}
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 func (usersService *UsersService) GetUserByToken(ctx context.Context, token string) (*model.Users, error) {
 	jwt, err := usersService.jwt.parser.Parse(token, func(t *jwt.Token) (interface{}, error) { return usersService.jwt.key, nil })
 	if err != nil {
