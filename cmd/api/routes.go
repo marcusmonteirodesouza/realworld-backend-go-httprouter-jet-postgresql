@@ -11,8 +11,9 @@ func (app *application) routes() http.Handler {
 
 	router.HandlerFunc(http.MethodGet, "/healthz", app.healthcheck)
 
-	router.HandlerFunc(http.MethodPost, "/users", app.registerUser)
+	router.HandlerFunc(http.MethodGet, "/user", app.authenticate(app.getCurrentUser))
 	router.HandlerFunc(http.MethodPost, "/users/login", app.login)
+	router.HandlerFunc(http.MethodPost, "/users", app.registerUser)
 
-	return router
+	return app.recoverPanic(router)
 }

@@ -26,6 +26,8 @@ type UsersService struct {
 type UsersServiceJWT struct {
 	iss             string
 	key             []byte
+	parser          jwt.Parser
+	signinMethod    jwt.SigningMethod
 	validForSeconds int
 }
 
@@ -41,6 +43,8 @@ func NewUsersServiceJWT(iss string, key []byte, validForSeconds int) *UsersServi
 	return &UsersServiceJWT{
 		iss:             iss,
 		key:             key,
+		parser:          *jwt.NewParser(jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired(), jwt.WithIssuer(iss)),
+		signinMethod:    jwt.SigningMethodHS256,
 		validForSeconds: validForSeconds,
 	}
 }
@@ -93,6 +97,22 @@ func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser
 	return &user, nil
 }
 
+func (usersService *UsersService) GetUserById(ctx context.Context, userId uuid.UUID) (*model.Users, error) {
+	user := model.Users{}
+
+	selectStmt := SELECT(Users.AllColumns).FROM(Users).WHERE(Users.ID.EQ(UUID(userId)))
+
+	err := selectStmt.QueryContext(ctx, usersService.db, &user)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("User %s not found", userId)}
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 func (usersService *UsersService) GetUserByEmail(ctx context.Context, email string) (*model.Users, error) {
 	user := model.Users{}
 
@@ -107,6 +127,30 @@ func (usersService *UsersService) GetUserByEmail(ctx context.Context, email stri
 	}
 
 	return &user, nil
+}
+
+func (usersService *UsersService) GetUserByToken(ctx context.Context, token string) (*model.Users, error) {
+	jwt, err := usersService.jwt.parser.Parse(token, func(t *jwt.Token) (interface{}, error) { return usersService.jwt.key, nil })
+	if err != nil {
+		return nil, err
+	}
+
+	userIdString, err := jwt.Claims.GetSubject()
+	if err != nil {
+		return nil, err
+	}
+
+	userId, err := uuid.Parse(userIdString)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := usersService.GetUserById(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 func (usersService *UsersService) CheckPassword(ctx context.Context, userId uuid.UUID, password string) (*bool, error) {
@@ -132,7 +176,7 @@ func (usersService *UsersService) GetToken(user *model.Users) (*string, error) {
 
 	exp := now.Add(time.Second * time.Duration(usersService.jwt.validForSeconds))
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	token := jwt.NewWithClaims(usersService.jwt.signinMethod, jwt.MapClaims{
 		"exp": exp.Unix(),
 		"iat": now.Unix(),
 		"iss": usersService.jwt.iss,

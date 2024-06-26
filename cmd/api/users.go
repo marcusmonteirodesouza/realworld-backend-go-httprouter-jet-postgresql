@@ -50,6 +50,18 @@ func newUserResponse(email string, token string, username string, bio *string, i
 	}
 }
 
+func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request) {
+	user := app.contextGetUser(r)
+	token := app.contextGetToken(r)
+
+	userResponse := newUserResponse(user.Email, token, user.Username, user.Bio, user.Image)
+
+	err := writeJSON(w, http.StatusOK, userResponse)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
 func (app *application) login(w http.ResponseWriter, r *http.Request) {
 	var request loginRequest
 
@@ -90,7 +102,7 @@ func (app *application) login(w http.ResponseWriter, r *http.Request) {
 
 	userResponse := newUserResponse(user.Email, *token, user.Username, user.Bio, user.Image)
 
-	err = writeJSON(w, http.StatusCreated, userResponse, nil)
+	err = writeJSON(w, http.StatusOK, userResponse)
 	if err != nil {
 		app.writeErrorResponse(w, err)
 	}
@@ -121,7 +133,7 @@ func (app *application) registerUser(w http.ResponseWriter, r *http.Request) {
 
 	userResponse := newUserResponse(user.Email, *token, user.Username, user.Bio, user.Image)
 
-	err = writeJSON(w, http.StatusCreated, userResponse, nil)
+	err = writeJSON(w, http.StatusCreated, userResponse)
 	if err != nil {
 		app.writeErrorResponse(w, err)
 	}
