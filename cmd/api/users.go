@@ -166,13 +166,13 @@ func (app *application) updateUser(w http.ResponseWriter, r *http.Request, _ htt
 
 	token := app.contextGetToken(r)
 
-	updatedUser, err := app.usersService.UpdateUser(ctx, user.ID, services.NewUpdateUser(request.User.Email, request.User.Username, request.User.Password, request.User.Bio, request.User.Image))
+	user, err = app.usersService.UpdateUser(ctx, user.ID, services.NewUpdateUser(request.User.Email, request.User.Username, request.User.Password, request.User.Bio, request.User.Image))
 	if err != nil {
 		app.writeErrorResponse(w, err)
 		return
 	}
 
-	userResponse := newUserResponse(*updatedUser, token)
+	userResponse := newUserResponse(*user, token)
 
 	if err = writeJSON(w, http.StatusOK, userResponse); err != nil {
 		app.writeErrorResponse(w, err)
