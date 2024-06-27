@@ -17,8 +17,8 @@ type ProfilesService struct {
 	usersService *UsersService
 }
 
-func NewProfilesService(db *sql.DB, logger *logging.Logger, usersService *UsersService) *ProfilesService {
-	return &ProfilesService{
+func NewProfilesService(db *sql.DB, logger *logging.Logger, usersService *UsersService) ProfilesService {
+	return ProfilesService{
 		db:           db,
 		logger:       logger,
 		usersService: usersService,
@@ -32,8 +32,8 @@ type Profile struct {
 	Following bool
 }
 
-func NewProfile(username string, bio *string, image *string, following bool) *Profile {
-	return &Profile{
+func NewProfile(username string, bio *string, image *string, following bool) Profile {
+	return Profile{
 		Username:  username,
 		Bio:       bio,
 		Image:     image,
@@ -56,10 +56,14 @@ func (profilesService *ProfilesService) GetProfile(ctx context.Context, userId u
 		following = *isFollowing
 	}
 
-	return NewProfile(user.Username, user.Bio, user.Image, following), nil
+	profile := NewProfile(user.Username, user.Bio, user.Image, following)
+
+	return &profile, nil
 }
 
 func (profilesService *ProfilesService) FollowUser(ctx context.Context, followerId uuid.UUID, followedId uuid.UUID) error {
+	profilesService.logger.StandardLogger(logging.Info).Printf("User %s following user %s", followedId.String(), followedId.String())
+
 	isFollowing, err := profilesService.IsFollowing(ctx, followerId, followedId)
 	if err != nil {
 		return err
@@ -86,8 +90,7 @@ func (profilesService *ProfilesService) FollowUser(ctx context.Context, follower
 
 	followUserStmt := Follow.INSERT(Follow.FollowerID, Follow.FollowedID).MODEL(follow).RETURNING(Follow.AllColumns)
 
-	err = followUserStmt.QueryContext(ctx, profilesService.db, &follow)
-	if err != nil {
+	if err = followUserStmt.QueryContext(ctx, profilesService.db, &follow); err != nil {
 		return err
 	}
 
@@ -95,6 +98,8 @@ func (profilesService *ProfilesService) FollowUser(ctx context.Context, follower
 }
 
 func (profilesService *ProfilesService) UnfollowUser(ctx context.Context, followerId uuid.UUID, followedId uuid.UUID) error {
+	profilesService.logger.StandardLogger(logging.Info).Printf("User %s unfollowing user %s", followedId.String(), followedId.String())
+
 	isFollowing, err := profilesService.IsFollowing(ctx, followerId, followedId)
 	if err != nil {
 		return err

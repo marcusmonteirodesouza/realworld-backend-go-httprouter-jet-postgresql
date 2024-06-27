@@ -20,5 +20,9 @@ func (app *application) routes() http.Handler {
 	router.POST("/profiles/:username/follow", app.authenticate(app.followUser))
 	router.DELETE("/profiles/:username/follow", app.authenticate(app.unfollowUser))
 
-	return router
+	router.POST("/articles", app.authenticate(app.createArticle))
+
+	router.GET("/tags", app.getTags)
+
+	return app.recoverPanic(router)
 }

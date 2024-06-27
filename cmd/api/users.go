@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/.gen/realworld/public/model"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
 )
 
@@ -51,14 +52,14 @@ type userResponseUser struct {
 	Image    *string `json:"image"`
 }
 
-func newUserResponse(email string, token string, username string, bio *string, image *string) userResponse {
+func newUserResponse(user model.Users, token string) userResponse {
 	return userResponse{
 		User: userResponseUser{
-			Email:    email,
+			Email:    user.Email,
 			Token:    token,
-			Username: username,
-			Bio:      bio,
-			Image:    image,
+			Username: user.Username,
+			Bio:      user.Bio,
+			Image:    user.Image,
 		},
 	}
 }
@@ -67,7 +68,7 @@ func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request, _
 	user := app.contextGetUser(r)
 	token := app.contextGetToken(r)
 
-	userResponse := newUserResponse(user.Email, token, user.Username, user.Bio, user.Image)
+	userResponse := newUserResponse(*user, token)
 
 	err := writeJSON(w, http.StatusOK, userResponse)
 	if err != nil {
@@ -113,10 +114,9 @@ func (app *application) login(w http.ResponseWriter, r *http.Request, _ httprout
 		return
 	}
 
-	userResponse := newUserResponse(user.Email, *token, user.Username, user.Bio, user.Image)
+	userResponse := newUserResponse(*user, *token)
 
-	err = writeJSON(w, http.StatusOK, userResponse)
-	if err != nil {
+	if err = writeJSON(w, http.StatusOK, userResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -144,10 +144,9 @@ func (app *application) registerUser(w http.ResponseWriter, r *http.Request, _ h
 		return
 	}
 
-	userResponse := newUserResponse(user.Email, *token, user.Username, user.Bio, user.Image)
+	userResponse := newUserResponse(*user, *token)
 
-	err = writeJSON(w, http.StatusCreated, userResponse)
-	if err != nil {
+	if err = writeJSON(w, http.StatusCreated, userResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -173,10 +172,9 @@ func (app *application) updateUser(w http.ResponseWriter, r *http.Request, _ htt
 		return
 	}
 
-	userResponse := newUserResponse(updatedUser.Email, token, updatedUser.Username, updatedUser.Bio, updatedUser.Image)
+	userResponse := newUserResponse(*updatedUser, token)
 
-	err = writeJSON(w, http.StatusOK, userResponse)
-	if err != nil {
+	if err = writeJSON(w, http.StatusOK, userResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
