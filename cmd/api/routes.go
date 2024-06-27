@@ -20,6 +20,7 @@ func (app *application) routes() http.Handler {
 	router.POST("/profiles/:username/follow", app.authenticate(app.followUser))
 	router.DELETE("/profiles/:username/follow", app.authenticate(app.unfollowUser))
 
+	router.GET("/articles", app.authenticateOptional(app.listArticles))
 	router.GET("/articles/:slug", app.authenticateOptional(app.getArticleBySlug))
 	router.POST("/articles", app.authenticate(app.createArticle))
 	router.POST("/articles/:slug/favorite", app.authenticate(app.favoriteArticle))

@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/.gen/realworld/public/model"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
@@ -60,6 +63,18 @@ func newArticleResponse(article model.Article, articleTags []model.ArticleTag, f
 	}
 }
 
+type multipleArticlesResponse struct {
+	Articles      []articleResponseArticle `json:"articles"`
+	ArticlesCount int                      `json:"articlesCount"`
+}
+
+func newMultipleArticlesResponse(articleResponseArticles []articleResponseArticle) multipleArticlesResponse {
+	return multipleArticlesResponse{
+		Articles:      articleResponseArticles,
+		ArticlesCount: len(articleResponseArticles),
+	}
+}
+
 type ListOfTagsResponse struct {
 	Tags []string `json:"tags"`
 }
@@ -105,6 +120,96 @@ func (app *application) createArticle(w http.ResponseWriter, r *http.Request, _ 
 	}
 }
 
+func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	query := r.URL.Query()
+
+	var authorId *uuid.UUID
+	authorUsername := query.Get("author")
+	if authorUsername != "" {
+		author, err := app.usersService.GetUserByUsername(ctx, authorUsername)
+		if err != nil {
+			app.writeErrorResponse(w, err)
+			return
+		}
+		authorId = &author.ID
+	}
+
+	var favoritedByUserId *uuid.UUID
+	favoritedByUsername := query.Get("favorited")
+	if favoritedByUsername != "" {
+		favoritedByUser, err := app.usersService.GetUserByUsername(ctx, favoritedByUsername)
+		if err != nil {
+			app.writeErrorResponse(w, err)
+			return
+		}
+		favoritedByUserId = &favoritedByUser.ID
+	}
+
+	var tagName *string
+	tagParam := query.Get("tag")
+	if tagParam != "" {
+		tagName = &tagParam
+	}
+
+	limit := 20
+	limitParam := query.Get("limit")
+	if limitParam != "" {
+		limitValue, err := strconv.Atoi(limitParam)
+		if err != nil {
+			app.writeErrorResponse(w, &malformedRequest{
+				msg: fmt.Sprintf("Query parameter 'limit' must be an integer. Received %s", limitParam),
+			})
+			return
+		}
+		limit = limitValue
+	}
+
+	offset := 0
+	offsetParam := query.Get("offset")
+	if offsetParam != "" {
+		offsetValue, err := strconv.Atoi(offsetParam)
+		if err != nil {
+			app.writeErrorResponse(w, &malformedRequest{
+				msg: fmt.Sprintf("Query parameter 'offset' must be an integer. Received %s", offsetParam),
+			})
+			return
+		}
+		offset = offsetValue
+	}
+
+	articles, err := app.articlesService.ListArticles(ctx, services.ListArticles{
+		AuthorID:          authorId,
+		FavoritedByUserID: favoritedByUserId,
+		TagName:           tagName,
+		Limit:             &limit,
+		Offset:            &offset,
+	})
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	articleResponseArticles := make([]articleResponseArticle, len(*articles))
+	for i, article := range *articles {
+		articleResponse, err := app.makeArticleResponse(ctx, user, article)
+		if err != nil {
+			app.writeErrorResponse(w, err)
+			return
+		}
+		articleResponseArticles[i] = articleResponse.Article
+	}
+
+	multipleArticleResponses := newMultipleArticlesResponse(articleResponseArticles)
+
+	if err = writeJSON(w, http.StatusOK, multipleArticleResponses); err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
 func (app *application) getArticleBySlug(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
 
@@ -124,7 +229,7 @@ func (app *application) getArticleBySlug(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -159,7 +264,7 @@ func (app *application) favoriteArticle(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -194,7 +299,7 @@ func (app *application) unfavoriteArticle(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -202,7 +307,7 @@ func (app *application) unfavoriteArticle(w http.ResponseWriter, r *http.Request
 func (app *application) getTags(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx := r.Context()
 
-	tags, err := app.articlesService.ListTags(ctx, services.NewListTags(nil))
+	tags, err := app.articlesService.ListTags(ctx, services.ListTags{ArticleID: nil})
 	if err != nil {
 		app.writeErrorResponse(w, err)
 		return
@@ -221,9 +326,13 @@ func (app *application) makeArticleResponse(ctx context.Context, user *model.Use
 		return nil, err
 	}
 
-	favorited, err := app.articlesService.IsFavorite(ctx, user.ID, article.ID)
-	if err != nil {
-		return nil, err
+	favorited := false
+	if user != nil {
+		isFavorite, err := app.articlesService.IsFavorite(ctx, user.ID, article.ID)
+		if err != nil {
+			return nil, err
+		}
+		favorited = *isFavorite
 	}
 
 	favoritesCount, err := app.articlesService.GetFavoritesCount(ctx, article.ID)
@@ -243,7 +352,7 @@ func (app *application) makeArticleResponse(ctx context.Context, user *model.Use
 		return nil, err
 	}
 
-	articleResponse := newArticleResponse(article, *articleTags, *favorited, *favoritesCount, *authorProfile)
+	articleResponse := newArticleResponse(article, *articleTags, favorited, *favoritesCount, *authorProfile)
 
 	return &articleResponse, nil
 }
