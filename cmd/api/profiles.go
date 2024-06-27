@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
+	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
 )
 
 type profileResponse struct {
@@ -18,14 +19,18 @@ type profileResponseProfile struct {
 	Following bool    `json:"following"`
 }
 
-func newProfileResponse(username string, bio *string, image *string, following bool) profileResponse {
+func newProfileResponse(profile services.Profile) profileResponse {
 	return profileResponse{
-		Profile: profileResponseProfile{
-			Username:  username,
-			Bio:       bio,
-			Image:     image,
-			Following: following,
-		},
+		Profile: newProfileResponseProfile(profile),
+	}
+}
+
+func newProfileResponseProfile(profile services.Profile) profileResponseProfile {
+	return profileResponseProfile{
+		Username:  profile.Username,
+		Bio:       profile.Bio,
+		Image:     profile.Image,
+		Following: profile.Following,
 	}
 }
 
@@ -52,8 +57,7 @@ func (app *application) getProfile(w http.ResponseWriter, r *http.Request, ps ht
 		return
 	}
 
-	err = writeJSON(w, http.StatusOK, newProfileResponse(profile.Username, profile.Bio, profile.Image, profile.Following))
-	if err != nil {
+	if err = writeJSON(w, http.StatusOK, newProfileResponse(*profile)); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -71,8 +75,7 @@ func (app *application) followUser(w http.ResponseWriter, r *http.Request, ps ht
 
 	follower := app.contextGetUser(r)
 
-	err = app.profilesService.FollowUser(ctx, follower.ID, user.ID)
-	if err != nil {
+	if err = app.profilesService.FollowUser(ctx, follower.ID, user.ID); err != nil {
 		app.writeErrorResponse(w, err)
 		return
 	}
@@ -83,8 +86,7 @@ func (app *application) followUser(w http.ResponseWriter, r *http.Request, ps ht
 		return
 	}
 
-	err = writeJSON(w, http.StatusOK, newProfileResponse(profile.Username, profile.Bio, profile.Image, profile.Following))
-	if err != nil {
+	if err = writeJSON(w, http.StatusOK, newProfileResponse(*profile)); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -102,8 +104,7 @@ func (app *application) unfollowUser(w http.ResponseWriter, r *http.Request, ps 
 
 	follower := app.contextGetUser(r)
 
-	err = app.profilesService.UnfollowUser(ctx, follower.ID, user.ID)
-	if err != nil {
+	if err = app.profilesService.UnfollowUser(ctx, follower.ID, user.ID); err != nil {
 		app.writeErrorResponse(w, err)
 		return
 	}
@@ -114,8 +115,7 @@ func (app *application) unfollowUser(w http.ResponseWriter, r *http.Request, ps 
 		return
 	}
 
-	err = writeJSON(w, http.StatusOK, newProfileResponse(profile.Username, profile.Bio, profile.Image, profile.Following))
-	if err != nil {
+	if err = writeJSON(w, http.StatusOK, newProfileResponse(*profile)); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }

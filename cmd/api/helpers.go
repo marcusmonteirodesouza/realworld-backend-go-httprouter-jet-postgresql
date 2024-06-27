@@ -137,12 +137,10 @@ func (app *application) writeErrorResponse(w http.ResponseWriter, err error) {
 		status = http.StatusInternalServerError
 	}
 
-	err = writeJSON(w, status, errorResponse{
+	if err = writeJSON(w, status, errorResponse{
 		Errors: errorResponseErrors{
 			Body: []string{msg},
-		}})
-
-	if err != nil {
+		}}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }

@@ -21,7 +21,7 @@ import (
 
 type UsersService struct {
 	db     *sql.DB
-	jwt    UsersServiceJWT
+	jwt    *UsersServiceJWT
 	logger *logging.Logger
 }
 
@@ -33,16 +33,16 @@ type UsersServiceJWT struct {
 	validForSeconds int
 }
 
-func NewUsersService(db *sql.DB, jwt UsersServiceJWT, logger *logging.Logger) *UsersService {
-	return &UsersService{
+func NewUsersService(db *sql.DB, jwt *UsersServiceJWT, logger *logging.Logger) UsersService {
+	return UsersService{
 		db:     db,
 		jwt:    jwt,
 		logger: logger,
 	}
 }
 
-func NewUsersServiceJWT(iss string, key []byte, validForSeconds int) *UsersServiceJWT {
-	return &UsersServiceJWT{
+func NewUsersServiceJWT(iss string, key []byte, validForSeconds int) UsersServiceJWT {
+	return UsersServiceJWT{
 		iss:             iss,
 		key:             key,
 		parser:          *jwt.NewParser(jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithIssuer(iss)),
@@ -101,8 +101,7 @@ func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser
 		return nil, err
 	}
 
-	err = usersService.validateUsername(ctx, registerUser.Username)
-	if err != nil {
+	if err = usersService.validateUsername(ctx, registerUser.Username); err != nil {
 		return nil, err
 	}
 
@@ -119,8 +118,7 @@ func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser
 
 	insertStmt := Users.INSERT(Users.Email, Users.Username, Users.PasswordHash).MODEL(user).RETURNING(Users.AllColumns)
 
-	err = insertStmt.QueryContext(ctx, usersService.db, &user)
-	if err != nil {
+	if err = insertStmt.QueryContext(ctx, usersService.db, &user); err != nil {
 		return nil, err
 	}
 
@@ -224,8 +222,7 @@ func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UU
 	}
 
 	if updateUser.Email != nil && *updateUser.Email != user.Email {
-		err = usersService.validateEmail(ctx, *updateUser.Email)
-		if err != nil {
+		if err = usersService.validateEmail(ctx, *updateUser.Email); err != nil {
 			return nil, err
 		}
 
@@ -233,8 +230,7 @@ func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UU
 	}
 
 	if updateUser.Username != nil && *updateUser.Username != user.Username {
-		err = usersService.validateUsername(ctx, *updateUser.Username)
-		if err != nil {
+		if err = usersService.validateUsername(ctx, *updateUser.Username); err != nil {
 			return nil, err
 		}
 
@@ -255,8 +251,7 @@ func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UU
 	}
 
 	if updateUser.Image != user.Image {
-		err = usersService.validateImage(*updateUser.Image)
-		if err != nil {
+		if err = usersService.validateImage(*updateUser.Image); err != nil {
 			return nil, err
 		}
 
@@ -269,8 +264,7 @@ func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UU
 
 	updateStmt := Users.UPDATE(Users.Email, Users.Username, Users.PasswordHash, Users.Bio, Users.Image, Users.UpdatedAt).MODEL(user).WHERE(Users.ID.EQ(UUID(user.ID))).RETURNING(Users.AllColumns)
 
-	err = updateStmt.QueryContext(ctx, usersService.db, user)
-	if err != nil {
+	if err = updateStmt.QueryContext(ctx, usersService.db, user); err != nil {
 		return nil, err
 	}
 
@@ -343,18 +337,17 @@ func (usersService *UsersService) validateEmail(ctx context.Context, email strin
 		return err
 	}
 
-	var dest struct {
+	var emailExistsDest struct {
 		EmailExists bool
 	}
 
 	emailExistsStmt := SELECT(EXISTS(Users.SELECT(Users.ID).WHERE(Users.Email.EQ(String(email)))).AS("email_exists"))
 
-	err = emailExistsStmt.QueryContext(ctx, usersService.db, &dest)
-	if err != nil {
+	if err = emailExistsStmt.QueryContext(ctx, usersService.db, &emailExistsDest); err != nil {
 		return err
 	}
 
-	if dest.EmailExists {
+	if emailExistsDest.EmailExists {
 		return &AlreadyExistsError{msg: "Email is taken"}
 	}
 
@@ -362,18 +355,18 @@ func (usersService *UsersService) validateEmail(ctx context.Context, email strin
 }
 
 func (usersService *UsersService) validateUsername(ctx context.Context, username string) error {
-	var dest struct {
+	var usernameExistsDest struct {
 		UsernameExists bool
 	}
 
 	usernameExistsStmt := SELECT(EXISTS(Users.SELECT(Users.ID).WHERE(Users.Username.EQ(String(username)))).AS("username_exists"))
 
-	err := usernameExistsStmt.QueryContext(ctx, usersService.db, &dest)
+	err := usernameExistsStmt.QueryContext(ctx, usersService.db, &usernameExistsDest)
 	if err != nil {
 		return err
 	}
 
-	if dest.UsernameExists {
+	if usernameExistsDest.UsernameExists {
 		return &AlreadyExistsError{msg: "Username is taken"}
 	}
 

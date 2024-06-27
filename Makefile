@@ -26,6 +26,11 @@ db/migrations/new:
 db/migrations/up: confirm
 	migrate -path="./migrations" -database "postgres://postgres:${password}@localhost/realworld?sslmode=disable" up
 
+## db/migrations/force password=$1 version=$2: force migration version
+.PHONY: db/migrations/force
+db/migrations/force: confirm
+	migrate -path="./migrations" -database "postgres://postgres:${password}@localhost/realworld?sslmode=disable" force "${version}"
+
 .PHONY: down
 down:
 	docker compose down

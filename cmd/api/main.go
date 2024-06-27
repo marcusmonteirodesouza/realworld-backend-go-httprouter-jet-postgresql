@@ -23,6 +23,7 @@ type config struct {
 }
 
 type application struct {
+	articlesService *services.ArticlesService
 	config          *config
 	db              *sql.DB
 	logger          *logging.Logger
@@ -124,20 +125,24 @@ func main() {
 		port: port,
 	}
 
-	usersService := services.NewUsersService(db, *services.NewUsersServiceJWT(jwtIss, []byte(jwtKey), jwtValidForSeconds), logger)
+	usersServiceJWT := services.NewUsersServiceJWT(jwtIss, []byte(jwtKey), jwtValidForSeconds)
 
-	profilesService := services.NewProfilesService(db, logger, usersService)
+	usersService := services.NewUsersService(db, &usersServiceJWT, logger)
+
+	profilesService := services.NewProfilesService(db, logger, &usersService)
+
+	articlesService := services.NewArticlesService(db, logger, &usersService)
 
 	app := &application{
+		articlesService: &articlesService,
 		db:              db,
 		config:          config,
 		logger:          logger,
-		profilesService: profilesService,
-		usersService:    usersService,
+		profilesService: &profilesService,
+		usersService:    &usersService,
 	}
 
-	err = app.serve(ctx)
-	if err != nil {
+	if err = app.serve(ctx); err != nil {
 		app.logger.StandardLogger(logging.Critical).Fatal(err.Error())
 	}
 }
@@ -148,8 +153,7 @@ func openDB(ctx context.Context, dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	err = db.PingContext(ctx)
-	if err != nil {
+	if err = db.PingContext(ctx); err != nil {
 		return nil, err
 	}
 

@@ -1,11 +1,24 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
 )
+
+func (app *application) recoverPanic(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				w.Header().Set("Connection:", "close")
+				app.writeErrorResponse(w, fmt.Errorf("%s", err))
+			}
+		}()
+		handler.ServeHTTP(w, r)
+	})
+}
 
 func (app *application) authenticate(h httprouter.Handle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
