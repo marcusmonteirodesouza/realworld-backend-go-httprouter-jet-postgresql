@@ -1,0 +1,29 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceRoot}/cmd/api",
+      "env": {
+        "GOOGLE_PROJECT_ID": "my-google-project-id",
+        "K_SERVICE": "realworld-api",
+        "JWT_ISS": "https://realworld.marcusmonteirodesouza.com",
+        "JWT_KEY": "top-secret",
+        "JWT_VALID_FOR_SECONDS": "3600",
+        "PORT": "8080",
+        "POSTGRES_DB": "realworld",
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_PASSWORD": "postgres",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_USER": "postgres"
+      },
+      "showLog": true
+    }
+  ]
+}

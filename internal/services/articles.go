@@ -48,14 +48,16 @@ func NewCreateArticle(authorId uuid.UUID, title string, description string, body
 	}
 }
 
-type ListTags struct {
-	ArticleID *uuid.UUID
+type ListArticles struct {
+	AuthorID          *uuid.UUID
+	FavoritedByUserID *uuid.UUID
+	TagName           *string
+	Limit             *int
+	Offset            *int
 }
 
-func NewListTags(articleId *uuid.UUID) ListTags {
-	return ListTags{
-		ArticleID: articleId,
-	}
+type ListTags struct {
+	ArticleID *uuid.UUID
 }
 
 func (articlesService *ArticlesService) CreateArticle(ctx context.Context, createArticle CreateArticle) (*model.Article, error) {
@@ -169,6 +171,44 @@ func (articlesService *ArticlesService) GetArticleBySlug(ctx context.Context, sl
 	}
 
 	return &article, nil
+}
+
+func (articlesService *ArticlesService) ListArticles(ctx context.Context, listArticles ListArticles) (*[]model.Article, error) {
+	condition := Bool(true)
+
+	if listArticles.AuthorID != nil {
+		condition = condition.AND(Article.AuthorID.EQ(UUID(*listArticles.AuthorID)))
+	}
+
+	if listArticles.FavoritedByUserID != nil {
+		condition = condition.AND(Article.ID.IN(SELECT(Favorite.ArticleID).FROM(Favorite).WHERE(Favorite.UserID.EQ(UUID(*listArticles.FavoritedByUserID)))))
+	}
+
+	if listArticles.TagName != nil {
+		condition = condition.AND(
+			Article.ID.IN(
+				SELECT(ArticleArticleTag.ArticleID).FROM(
+					ArticleArticleTag.INNER_JOIN(ArticleTag, ArticleArticleTag.ArticleTagID.EQ(ArticleTag.ID))).WHERE(ArticleTag.Name.EQ(String(*listArticles.TagName)))))
+	}
+
+	listArticlesStmt := SELECT(Article.AllColumns).FROM(Article).WHERE(condition).ORDER_BY(Article.CreatedAt.DESC())
+
+	if listArticles.Limit != nil {
+		listArticlesStmt = listArticlesStmt.LIMIT(int64(*listArticles.Limit))
+	}
+
+	if listArticles.Offset != nil {
+		listArticlesStmt = listArticlesStmt.OFFSET(int64(*listArticles.Offset))
+	}
+
+	var articles []model.Article
+
+	err := listArticlesStmt.QueryContext(ctx, articlesService.db, &articles)
+	if err != nil {
+		return nil, err
+	}
+
+	return &articles, nil
 }
 
 func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags ListTags) (*[]model.ArticleTag, error) {
