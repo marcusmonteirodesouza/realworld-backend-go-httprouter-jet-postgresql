@@ -107,6 +107,8 @@ func (articlesService *ArticlesService) CreateArticle(ctx context.Context, creat
 
 					insertTagStmt := ArticleTag.INSERT(ArticleTag.Name).MODEL(tagModel).RETURNING(ArticleTag.AllColumns)
 
+					articlesService.logger.StandardLogger(logging.Info).Printf("Creating article tag %s", tagModel.Name)
+
 					if err = insertTagStmt.QueryContext(ctx, tx, &tagModel); err != nil {
 						return nil, err
 					}
@@ -137,6 +139,38 @@ func (articlesService *ArticlesService) CreateArticle(ctx context.Context, creat
 	return &article, nil
 }
 
+func (articlesService *ArticlesService) GetArticleById(ctx context.Context, articleId uuid.UUID) (*model.Article, error) {
+	var article model.Article
+
+	getArticleByIdStmt := Article.SELECT(Article.AllColumns).WHERE(Article.ID.EQ(UUID(articleId)))
+
+	err := getArticleByIdStmt.QueryContext(ctx, articlesService.db, &article)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("Article %s not found", articleId)}
+		}
+		return nil, err
+	}
+
+	return &article, nil
+}
+
+func (articlesService *ArticlesService) GetArticleBySlug(ctx context.Context, slug string) (*model.Article, error) {
+	var article model.Article
+
+	getArticleBySlugStmt := Article.SELECT(Article.AllColumns).WHERE(Article.Slug.EQ(String(slug)))
+
+	err := getArticleBySlugStmt.QueryContext(ctx, articlesService.db, &article)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("Article with slug %s not found", slug)}
+		}
+		return nil, err
+	}
+
+	return &article, nil
+}
+
 func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags ListTags) (*[]model.ArticleTag, error) {
 	var tags []model.ArticleTag
 
@@ -154,6 +188,95 @@ func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags L
 	}
 
 	return &tags, nil
+}
+
+func (articlesService *ArticlesService) FavoriteArticle(ctx context.Context, userId uuid.UUID, articleId uuid.UUID) error {
+	articlesService.logger.StandardLogger(logging.Info).Printf("User %s favoriting article %s", userId.String(), articleId.String())
+
+	isFavorite, err := articlesService.IsFavorite(ctx, userId, articleId)
+	if err != nil {
+		return err
+	}
+
+	if *isFavorite {
+		return nil
+	}
+
+	user, err := articlesService.usersService.GetUserById(ctx, userId)
+	if err != nil {
+		return err
+	}
+
+	article, err := articlesService.GetArticleById(ctx, articleId)
+	if err != nil {
+		return err
+	}
+
+	favorite := model.Favorite{
+		UserID:    &user.ID,
+		ArticleID: &article.ID,
+	}
+
+	insertFavoriteStmt := Favorite.INSERT(Favorite.UserID, Favorite.ArticleID).MODEL(favorite)
+
+	_, err = insertFavoriteStmt.ExecContext(ctx, articlesService.db)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (articlesService *ArticlesService) UnfavoriteArticle(ctx context.Context, userId uuid.UUID, articleId uuid.UUID) error {
+	articlesService.logger.StandardLogger(logging.Info).Printf("User %s unfavoriting article %s", userId.String(), articleId.String())
+
+	isFavorite, err := articlesService.IsFavorite(ctx, userId, articleId)
+	if err != nil {
+		return err
+	}
+
+	if !*isFavorite {
+		return nil
+	}
+
+	deleteFavoriteStmt := Favorite.DELETE().WHERE(Favorite.UserID.EQ(UUID(userId)).AND(Favorite.ArticleID.EQ(UUID(articleId))))
+
+	_, err = deleteFavoriteStmt.ExecContext(ctx, articlesService.db)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (articlesService *ArticlesService) IsFavorite(ctx context.Context, userId uuid.UUID, articleId uuid.UUID) (*bool, error) {
+	var isFavoriteDest struct {
+		IsFavorite bool
+	}
+
+	isFavoriteStmt := SELECT(EXISTS(Favorite.SELECT(Favorite.ID).WHERE(Favorite.UserID.EQ(UUID(userId)).AND(Favorite.ArticleID.EQ(UUID(articleId))))).AS("is_favorite"))
+
+	err := isFavoriteStmt.QueryContext(ctx, articlesService.db, &isFavoriteDest)
+	if err != nil {
+		return nil, err
+	}
+
+	return &isFavoriteDest.IsFavorite, nil
+}
+
+func (articlesService *ArticlesService) GetFavoritesCount(ctx context.Context, articleId uuid.UUID) (*int, error) {
+	var favoritesCountDest struct {
+		FavoritesCount int
+	}
+
+	isFavoriteStmt := SELECT(COUNT(STAR).AS("favorites_count")).FROM(Favorite).WHERE(Favorite.ArticleID.EQ(UUID(articleId)))
+
+	err := isFavoriteStmt.QueryContext(ctx, articlesService.db, &favoritesCountDest)
+	if err != nil {
+		return nil, err
+	}
+
+	return &favoritesCountDest.FavoritesCount, nil
 }
 
 func (articlesService *ArticlesService) getTagByName(ctx context.Context, tagName string) (*model.ArticleTag, error) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -37,7 +38,7 @@ type articleResponseArticle struct {
 	Author         profileResponseProfile `json:"author"`
 }
 
-func newArticleResponse(article model.Article, articleTags []model.ArticleTag, favorited bool, authorProfile services.Profile) articleResponse {
+func newArticleResponse(article model.Article, articleTags []model.ArticleTag, favorited bool, favoritesCount int, authorProfile services.Profile) articleResponse {
 	tagList := make([]string, len(articleTags))
 	for i, tag := range articleTags {
 		tagList[i] = tag.Name
@@ -45,15 +46,16 @@ func newArticleResponse(article model.Article, articleTags []model.ArticleTag, f
 
 	return articleResponse{
 		Article: articleResponseArticle{
-			Slug:        article.Slug,
-			Title:       article.Title,
-			Description: article.Description,
-			Body:        article.Body,
-			TagList:     tagList,
-			CreatedAt:   *article.CreatedAt,
-			UpdatedAt:   *article.UpdatedAt,
-			Favorited:   favorited,
-			Author:      newProfileResponseProfile(authorProfile),
+			Slug:           article.Slug,
+			Title:          article.Title,
+			Description:    article.Description,
+			Body:           article.Body,
+			TagList:        tagList,
+			CreatedAt:      *article.CreatedAt,
+			UpdatedAt:      *article.UpdatedAt,
+			Favorited:      favorited,
+			FavoritesCount: favoritesCount,
+			Author:         newProfileResponseProfile(authorProfile),
 		},
 	}
 }
@@ -84,27 +86,113 @@ func (app *application) createArticle(w http.ResponseWriter, r *http.Request, _ 
 
 	ctx := r.Context()
 
-	author := app.contextGetUser(r)
+	user := app.contextGetUser(r)
 
-	article, err := app.articlesService.CreateArticle(ctx, services.NewCreateArticle(author.ID, request.Article.Title, request.Article.Description, request.Article.Body, request.Article.TagList))
+	article, err := app.articlesService.CreateArticle(ctx, services.NewCreateArticle(user.ID, request.Article.Title, request.Article.Description, request.Article.Body, request.Article.TagList))
 	if err != nil {
 		app.writeErrorResponse(w, err)
 		return
 	}
 
-	articleTags, err := app.articlesService.ListTags(ctx, services.ListTags{ArticleID: &article.ID})
+	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
 	if err != nil {
 		app.writeErrorResponse(w, err)
 		return
 	}
 
-	authorProfile, err := app.profilesService.GetProfile(ctx, author.ID, nil)
+	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
+func (app *application) getArticleBySlug(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	articleSlug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
 	if err != nil {
 		app.writeErrorResponse(w, err)
 		return
 	}
 
-	articleResponse := newArticleResponse(*article, *articleTags, false, *authorProfile)
+	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
+func (app *application) favoriteArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	articleSlug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if err = app.articlesService.FavoriteArticle(ctx, user.ID, article.ID); err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	article, err = app.articlesService.GetArticleBySlug(ctx, article.Slug)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
+func (app *application) unfavoriteArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	articleSlug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if err = app.articlesService.UnfavoriteArticle(ctx, user.ID, article.ID); err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	article, err = app.articlesService.GetArticleBySlug(ctx, article.Slug)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
 
 	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
 		app.writeErrorResponse(w, err)
@@ -125,4 +213,37 @@ func (app *application) getTags(w http.ResponseWriter, r *http.Request, _ httpro
 	if err = writeJSON(w, http.StatusOK, listOfTagsResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
+}
+
+func (app *application) makeArticleResponse(ctx context.Context, user *model.Users, article model.Article) (*articleResponse, error) {
+	articleTags, err := app.articlesService.ListTags(ctx, services.ListTags{ArticleID: &article.ID})
+	if err != nil {
+		return nil, err
+	}
+
+	favorited, err := app.articlesService.IsFavorite(ctx, user.ID, article.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	favoritesCount, err := app.articlesService.GetFavoritesCount(ctx, article.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	var authorProfile *services.Profile
+
+	if user != nil {
+		authorProfile, err = app.profilesService.GetProfile(ctx, *article.AuthorID, &user.ID)
+	} else {
+		authorProfile, err = app.profilesService.GetProfile(ctx, *article.AuthorID, nil)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	articleResponse := newArticleResponse(article, *articleTags, *favorited, *favoritesCount, *authorProfile)
+
+	return &articleResponse, nil
 }
