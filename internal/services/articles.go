@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/logging"
 	. "github.com/go-jet/jet/v2/postgres"
@@ -56,6 +57,12 @@ type ListArticles struct {
 	Offset            *int
 }
 
+type UpdateArticle struct {
+	Title       *string
+	Description *string
+	Body        *string
+}
+
 type ListTags struct {
 	ArticleID *uuid.UUID
 }
@@ -70,15 +77,14 @@ func (articlesService *ArticlesService) CreateArticle(ctx context.Context, creat
 		return nil, err
 	}
 
-	slug := articlesService.makeSlug(author.Username, createArticle.Title)
-
-	if err = articlesService.validateSlug(ctx, slug); err != nil {
+	slug, err := articlesService.makeSlug(ctx, author.Username, createArticle.Title)
+	if err != nil {
 		return nil, err
 	}
 
 	article := model.Article{
 		AuthorID:    &author.ID,
-		Slug:        slug,
+		Slug:        *slug,
 		Title:       createArticle.Title,
 		Description: createArticle.Description,
 		Body:        createArticle.Body,
@@ -221,6 +227,53 @@ func (articlesService *ArticlesService) ListArticles(ctx context.Context, listAr
 	return &articles, nil
 }
 
+func (articlesService *ArticlesService) UpdateArticle(ctx context.Context, articleId uuid.UUID, updateArticle UpdateArticle) (*model.Article, error) {
+	if updateArticleBytes, err := json.Marshal(updateArticle); err == nil {
+		articlesService.logger.StandardLogger(logging.Info).Printf("Updating article %s. %s", articleId.String(), string(updateArticleBytes))
+	}
+
+	article, err := articlesService.GetArticleById(ctx, articleId)
+	if err != nil {
+		return nil, err
+	}
+
+	if updateArticle.Title != nil {
+		author, err := articlesService.usersService.GetUserById(ctx, *article.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+
+		slug, err := articlesService.makeSlug(ctx, author.Username, *updateArticle.Title)
+		if err != nil {
+			return nil, err
+		}
+
+		article.Slug = *slug
+		article.Title = *updateArticle.Title
+	}
+
+	if updateArticle.Description != nil {
+		article.Description = *updateArticle.Description
+	}
+
+	if updateArticle.Body != nil {
+		article.Body = *updateArticle.Body
+	}
+
+	now := time.Now().UTC()
+
+	article.UpdatedAt = &now
+
+	updateArticleStmt := Article.UPDATE(Article.Slug, Article.Title, Article.Description, Article.Body, Article.UpdatedAt).MODEL(article).WHERE(Article.ID.EQ(UUID(article.ID)))
+
+	_, err = updateArticleStmt.ExecContext(ctx, articlesService.db)
+	if err != nil {
+		return nil, err
+	}
+
+	return article, nil
+}
+
 func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags ListTags) (*[]model.ArticleTag, error) {
 	var tags []model.ArticleTag
 
@@ -238,6 +291,28 @@ func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags L
 	}
 
 	return &tags, nil
+}
+
+func (articlesService *ArticlesService) DeleteArticle(ctx context.Context, articleId uuid.UUID) error {
+	articlesService.logger.StandardLogger(logging.Info).Printf("Deleting article %s", articleId.String())
+
+	deleteArticleStmt := Article.DELETE().WHERE(Article.ID.EQ(UUID(articleId)))
+
+	sqlResult, err := deleteArticleStmt.ExecContext(ctx, articlesService.db)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := sqlResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return &NotFoundError{msg: fmt.Sprintf("Article %s not found", articleId.String())}
+	}
+
+	return nil
 }
 
 func (articlesService *ArticlesService) FavoriteArticle(ctx context.Context, userId uuid.UUID, articleId uuid.UUID) error {
@@ -345,7 +420,9 @@ func (articlesService *ArticlesService) getTagByName(ctx context.Context, tagNam
 	return &tag, nil
 }
 
-func (articlesService *ArticlesService) validateSlug(ctx context.Context, slug string) error {
+func (articlesService *ArticlesService) makeSlug(ctx context.Context, authorUsername string, title string) (*string, error) {
+	slug := slug.Make(fmt.Sprintf("%s %s", authorUsername, title))
+
 	var slugExistsDest struct {
 		SlugExists bool
 	}
@@ -354,18 +431,14 @@ func (articlesService *ArticlesService) validateSlug(ctx context.Context, slug s
 
 	err := slugExistsStmt.QueryContext(ctx, articlesService.db, &slugExistsDest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if slugExistsDest.SlugExists {
-		return &AlreadyExistsError{msg: fmt.Sprintf("Slug %s already exists. Please choose another title.", slug)}
+		return nil, &AlreadyExistsError{msg: fmt.Sprintf("Slug %s already exists. Please choose another title.", slug)}
 	}
 
-	return nil
-}
-
-func (articlesService *ArticlesService) makeSlug(authorUsername string, title string) string {
-	return slug.Make(fmt.Sprintf("%s %s", authorUsername, title))
+	return &slug, nil
 }
 
 func (articlesService *ArticlesService) makeTagName(tagName string) string {

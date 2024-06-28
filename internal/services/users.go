@@ -281,7 +281,7 @@ func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UU
 		user.Image = updateUser.Image
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 
 	user.UpdatedAt = &now
 

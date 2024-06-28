@@ -35,6 +35,8 @@ func (app *application) routes() http.Handler {
 	}())
 	router.POST("/articles", app.authenticate(app.createArticle))
 	router.POST("/articles/:slug/favorite", app.authenticate(app.favoriteArticle))
+	router.PUT("/articles/:slug", app.authenticate(app.updateArticle))
+	router.DELETE("/articles/:slug", app.authenticate(app.deleteArticle))
 	router.DELETE("/articles/:slug/favorite", app.authenticate(app.unfavoriteArticle))
 
 	router.GET("/tags", app.getTags)
