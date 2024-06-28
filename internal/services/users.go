@@ -65,22 +65,16 @@ func NewRegisterUser(email string, username string, password string) RegisterUse
 	}
 }
 
+type ListUsers struct {
+	UserIDs *[]uuid.UUID
+}
+
 type UpdateUser struct {
 	Email    *string
 	Username *string
 	Password *string
 	Bio      *string
 	Image    *string
-}
-
-func NewUpdateUser(email *string, username *string, password *string, bio *string, image *string) UpdateUser {
-	return UpdateUser{
-		Email:    email,
-		Username: username,
-		Password: password,
-		Bio:      bio,
-		Image:    image,
-	}
 }
 
 func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser RegisterUser) (*model.Users, error) {
@@ -195,6 +189,35 @@ func (usersService *UsersService) GetUserByToken(ctx context.Context, token stri
 	}
 
 	return user, nil
+}
+
+func (usersService *UsersService) ListUsers(ctx context.Context, listUsers ListUsers) (*[]model.Users, error) {
+	condition := Bool(true)
+
+	if listUsers.UserIDs != nil {
+		if len(*listUsers.UserIDs) > 0 {
+			var sqlUserIds []Expression
+
+			for _, userId := range *listUsers.UserIDs {
+				sqlUserIds = append(sqlUserIds, UUID(userId))
+			}
+
+			condition = condition.AND(Users.ID.IN(sqlUserIds...))
+		} else {
+			condition = condition.AND(Bool(false))
+		}
+	}
+
+	var users []model.Users
+
+	listUsersStmt := SELECT(Users.AllColumns).FROM(Users).WHERE(condition)
+
+	err := listUsersStmt.QueryContext(ctx, usersService.db, &users)
+	if err != nil {
+		return nil, err
+	}
+
+	return &users, nil
 }
 
 func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UUID, updateUser UpdateUser) (*model.Users, error) {

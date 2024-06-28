@@ -106,6 +106,7 @@ func (app *application) writeErrorResponse(w http.ResponseWriter, err error) {
 
 	var alreadyExistsError *services.AlreadyExistsError
 	var invalidArgumentError *services.InvalidArgumentError
+	var notFoundError *services.NotFoundError
 
 	var forbiddenError *forbiddenError
 	var malformedRequest *malformedRequest
@@ -127,6 +128,10 @@ func (app *application) writeErrorResponse(w http.ResponseWriter, err error) {
 	case errors.As(err, &malformedRequest):
 		msg = malformedRequest.Error()
 		status = http.StatusBadRequest
+
+	case errors.As(err, &notFoundError):
+		msg = notFoundError.Error()
+		status = http.StatusNotFound
 
 	case errors.As(err, &unauthorizedError):
 		msg = "Unauthorized"

@@ -26,17 +26,19 @@ func NewProfilesService(db *sql.DB, logger *logging.Logger, usersService *UsersS
 }
 
 type Profile struct {
+	UserID    uuid.UUID
 	Username  string
 	Bio       *string
 	Image     *string
 	Following bool
 }
 
-func NewProfile(username string, bio *string, image *string, following bool) Profile {
+func NewProfile(user model.Users, following bool) Profile {
 	return Profile{
-		Username:  username,
-		Bio:       bio,
-		Image:     image,
+		UserID:    user.ID,
+		Username:  user.Username,
+		Bio:       user.Bio,
+		Image:     user.Image,
 		Following: following,
 	}
 }
@@ -56,7 +58,7 @@ func (profilesService *ProfilesService) GetProfile(ctx context.Context, userId u
 		following = *isFollowing
 	}
 
-	profile := NewProfile(user.Username, user.Bio, user.Image, following)
+	profile := NewProfile(*user, following)
 
 	return &profile, nil
 }
@@ -117,6 +119,37 @@ func (profilesService *ProfilesService) UnfollowUser(ctx context.Context, follow
 	}
 
 	return nil
+}
+
+func (profilesService *ProfilesService) ListFollowedProfiles(ctx context.Context, userId uuid.UUID) (*[]Profile, error) {
+	profilesService.logger.StandardLogger(logging.Alert).Printf("userId %s", userId.String())
+	var followedIds []uuid.UUID
+
+	var follows []model.Follow
+
+	listFollowedIdsStmt := SELECT(Follow.FollowedID).FROM(Follow).WHERE(Follow.FollowerID.EQ(UUID(userId)))
+
+	err := listFollowedIdsStmt.QueryContext(ctx, profilesService.db, &follows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, follow := range follows {
+		followedIds = append(followedIds, *follow.FollowedID)
+	}
+
+	users, err := profilesService.usersService.ListUsers(ctx, ListUsers{UserIDs: &followedIds})
+	if err != nil {
+		return nil, err
+	}
+
+	profiles := []Profile{}
+
+	for _, user := range *users {
+		profiles = append(profiles, NewProfile(user, true))
+	}
+
+	return &profiles, nil
 }
 
 func (profilesService *ProfilesService) IsFollowing(ctx context.Context, followerId uuid.UUID, followedId uuid.UUID) (*bool, error) {
