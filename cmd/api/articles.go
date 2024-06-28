@@ -127,15 +127,18 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 
 	query := r.URL.Query()
 
-	var authorId *uuid.UUID
+	var authorIds *[]uuid.UUID
 	authorUsername := query.Get("author")
 	if authorUsername != "" {
+		authorIds = &[]uuid.UUID{}
+
 		author, err := app.usersService.GetUserByUsername(ctx, authorUsername)
 		if err != nil {
 			app.writeErrorResponse(w, err)
 			return
 		}
-		authorId = &author.ID
+
+		*authorIds = append(*authorIds, author.ID)
 	}
 
 	var favoritedByUserId *uuid.UUID
@@ -182,7 +185,7 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 	}
 
 	articles, err := app.articlesService.ListArticles(ctx, services.ListArticles{
-		AuthorID:          authorId,
+		AuthorIDs:         authorIds,
 		FavoritedByUserID: favoritedByUserId,
 		TagName:           tagName,
 		Limit:             &limit,
@@ -193,19 +196,79 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 		return
 	}
 
-	articleResponseArticles := make([]articleResponseArticle, len(*articles))
-	for i, article := range *articles {
-		articleResponse, err := app.makeArticleResponse(ctx, user, article)
-		if err != nil {
-			app.writeErrorResponse(w, err)
-			return
-		}
-		articleResponseArticles[i] = articleResponse.Article
+	multipleArticleResponse, err := app.makeMultipleArticlesResponse(ctx, user, *articles)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
 	}
 
-	multipleArticleResponses := newMultipleArticlesResponse(articleResponseArticles)
+	if err = writeJSON(w, http.StatusOK, multipleArticleResponse); err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
 
-	if err = writeJSON(w, http.StatusOK, multipleArticleResponses); err != nil {
+func (app *application) feedArticles(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	query := r.URL.Query()
+
+	limit := 20
+	limitParam := query.Get("limit")
+	if limitParam != "" {
+		limitValue, err := strconv.Atoi(limitParam)
+		if err != nil {
+			app.writeErrorResponse(w, &malformedRequest{
+				msg: fmt.Sprintf("Query parameter 'limit' must be an integer. Received %s", limitParam),
+			})
+			return
+		}
+		limit = limitValue
+	}
+
+	offset := 0
+	offsetParam := query.Get("offset")
+	if offsetParam != "" {
+		offsetValue, err := strconv.Atoi(offsetParam)
+		if err != nil {
+			app.writeErrorResponse(w, &malformedRequest{
+				msg: fmt.Sprintf("Query parameter 'offset' must be an integer. Received %s", offsetParam),
+			})
+			return
+		}
+		offset = offsetValue
+	}
+
+	var authorIds []uuid.UUID
+
+	followedProfiles, err := app.profilesService.ListFollowedProfiles(ctx, user.ID)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	for _, followedProfile := range *followedProfiles {
+		authorIds = append(authorIds, followedProfile.UserID)
+	}
+
+	articles, err := app.articlesService.ListArticles(ctx, services.ListArticles{
+		AuthorIDs: &authorIds,
+		Limit:     &limit,
+		Offset:    &offset,
+	})
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	multipleArticleResponse, err := app.makeMultipleArticlesResponse(ctx, user, *articles)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusOK, multipleArticleResponse); err != nil {
 		app.writeErrorResponse(w, err)
 	}
 }
@@ -355,4 +418,20 @@ func (app *application) makeArticleResponse(ctx context.Context, user *model.Use
 	articleResponse := newArticleResponse(article, *articleTags, favorited, *favoritesCount, *authorProfile)
 
 	return &articleResponse, nil
+}
+
+func (app *application) makeMultipleArticlesResponse(ctx context.Context, user *model.Users, articles []model.Article) (*multipleArticlesResponse, error) {
+	articleResponseArticles := make([]articleResponseArticle, len(articles))
+
+	for i, article := range articles {
+		articleResponse, err := app.makeArticleResponse(ctx, user, article)
+		if err != nil {
+			return nil, err
+		}
+		articleResponseArticles[i] = articleResponse.Article
+	}
+
+	multipleArticleResponse := newMultipleArticlesResponse(articleResponseArticles)
+
+	return &multipleArticleResponse, nil
 }

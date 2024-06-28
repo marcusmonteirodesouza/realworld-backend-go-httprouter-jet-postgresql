@@ -49,7 +49,7 @@ func NewCreateArticle(authorId uuid.UUID, title string, description string, body
 }
 
 type ListArticles struct {
-	AuthorID          *uuid.UUID
+	AuthorIDs         *[]uuid.UUID
 	FavoritedByUserID *uuid.UUID
 	TagName           *string
 	Limit             *int
@@ -176,8 +176,18 @@ func (articlesService *ArticlesService) GetArticleBySlug(ctx context.Context, sl
 func (articlesService *ArticlesService) ListArticles(ctx context.Context, listArticles ListArticles) (*[]model.Article, error) {
 	condition := Bool(true)
 
-	if listArticles.AuthorID != nil {
-		condition = condition.AND(Article.AuthorID.EQ(UUID(*listArticles.AuthorID)))
+	if listArticles.AuthorIDs != nil {
+		if len(*listArticles.AuthorIDs) > 0 {
+			var sqlAuthorIds []Expression
+
+			for _, authorId := range *listArticles.AuthorIDs {
+				sqlAuthorIds = append(sqlAuthorIds, UUID(authorId))
+			}
+
+			condition = condition.AND(Article.AuthorID.IN(sqlAuthorIds...))
+		} else {
+			condition = condition.AND(Bool(false))
+		}
 	}
 
 	if listArticles.FavoritedByUserID != nil {
