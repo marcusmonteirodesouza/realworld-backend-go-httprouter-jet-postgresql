@@ -24,6 +24,16 @@ type createArticleRequestArticle struct {
 	TagList     *[]string `json:"tagList"`
 }
 
+type updateArticleRequest struct {
+	Article updateArticleRequestArticle `json:"article"`
+}
+
+type updateArticleRequestArticle struct {
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Body        *string `json:"body"`
+}
+
 type articleResponse struct {
 	Article articleResponseArticle `json:"article"`
 }
@@ -294,6 +304,73 @@ func (app *application) getArticleBySlug(w http.ResponseWriter, r *http.Request,
 
 	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
 		app.writeErrorResponse(w, err)
+	}
+}
+
+func (app *application) updateArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	var request updateArticleRequest
+
+	err := decodeJSONBody(w, r, &request)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	articleSlug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if *article.AuthorID != user.ID {
+		app.writeErrorResponse(w, &forbiddenError{msg: fmt.Sprintf("User %s cannot update article with slug %s", user.Username, article.Slug)})
+		return
+	}
+
+	article, err = app.articlesService.UpdateArticle(ctx, article.ID, services.UpdateArticle{Title: request.Article.Title, Description: request.Article.Description, Body: request.Article.Body})
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
+		app.writeErrorResponse(w, err)
+	}
+}
+
+func (app *application) deleteArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	articleSlug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
+	if err != nil {
+		app.writeErrorResponse(w, err)
+		return
+	}
+
+	if *article.AuthorID != user.ID {
+		app.writeErrorResponse(w, &forbiddenError{msg: fmt.Sprintf("User %s cannot delete article with slug %s", user.Username, article.Slug)})
+		return
+	}
+
+	if err = app.articlesService.DeleteArticle(ctx, article.ID); err != nil {
+		app.writeErrorResponse(w, err)
+		return
 	}
 }
 
