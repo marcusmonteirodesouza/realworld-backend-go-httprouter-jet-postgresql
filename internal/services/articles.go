@@ -145,6 +145,8 @@ func (articlesService *ArticlesService) CreateArticle(ctx context.Context, creat
 		return nil, err
 	}
 
+	articlesService.logger.InfoContext(ctx, "Article created", "articleId", article.ID, "slug", article.Slug)
+
 	return &article, nil
 }
 

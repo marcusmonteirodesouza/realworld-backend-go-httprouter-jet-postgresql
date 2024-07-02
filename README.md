@@ -24,4 +24,4 @@ For more information on how to this works with other frontends/backends, head ov
 # Getting started
 
 1. Run `cp .env.template .env`. The `.env` file contains the environment variables used by the application, including secrets.
-1. Run `make up`.
+1. Run `make run`.

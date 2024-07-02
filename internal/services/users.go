@@ -105,6 +105,8 @@ func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser
 		return nil, err
 	}
 
+	usersService.logger.InfoContext(ctx, "User created", "userId", user.ID)
+
 	return &user, nil
 }
 
@@ -286,8 +288,6 @@ func (usersService *UsersService) CheckPassword(ctx context.Context, userId uuid
 }
 
 func (usersService *UsersService) GetToken(ctx context.Context, user *model.Users) (*string, error) {
-	usersService.logger.InfoContext(ctx, "Getting token", "userId", user.ID)
-
 	now := time.Now()
 
 	exp := now.Add(time.Second * time.Duration(usersService.jwt.validForSeconds))
