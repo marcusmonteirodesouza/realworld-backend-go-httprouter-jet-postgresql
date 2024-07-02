@@ -17,13 +17,11 @@ For more information on how to this works with other frontends/backends, head ov
 - It uses [httprouter](https://github.com/julienschmidt/httprouter) to register routes and handlers. See [routes.go](cmd/api/routes.go).
 - It uses [Jet](https://github.com/go-jet/jet) to build type-safe SQL queries. This project doesn't use an ORM.
 - It uses [PostgreSQL](https://www.postgresql.org/) as database. Locally, the database runs as container [see docker-compose.yaml](docker-compose.yaml), and all it's data is stored in a volume mapped to the `postgres-data` folder inside the project (the folder is created automatically when running the container).
+- It uses [migrate](https://github.com/golang-migrate/migrate) to run migrations. See the [migrations folder](migrations)
 - It handles errors in a [centralized way](cmd/api/helpers.go).
 - It uses [Make](https://www.gnu.org/software/make/) to run some utility scripts. See the [Makefile](Makefile).
 
 # Getting started
 
-1. Run `cp .env.template .env`. The `.env` file contains the environment variables used by both Keycloak and the Realworld backend application, including secrets.
-
-## Run the application
-
+1. Run `cp .env.template .env`. The `.env` file contains the environment variables used by the application, including secrets.
 1. Run `make up`.
