@@ -6,9 +6,6 @@ services:
     ports:
       - "${PORT}:${PORT}"
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/tmp/application_default_credentials.json
-      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
-      - K_SERVICE=${K_SERVICE}
       - JWT_ISS=${JWT_ISS}
       - JWT_KEY=${JWT_KEY}
       - JWT_VALID_FOR_SECONDS=${JWT_VALID_FOR_SECONDS}
@@ -18,9 +15,6 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_USER=${POSTGRES_USER}
       - PORT=${PORT}
-    volumes:
-      # See https://cloud.google.com/docs/authentication/application-default-credentials#personal
-      - ~/.config/gcloud/application_default_credentials.json:/tmp/application_default_credentials.json
     depends_on:
       migrations:
         condition: service_completed_successfully

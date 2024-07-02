@@ -10,10 +10,12 @@ import (
 
 func (app *application) recoverPanic(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
 		defer func() {
 			if err := recover(); err != nil {
 				w.Header().Set("Connection:", "close")
-				app.writeErrorResponse(w, fmt.Errorf("%s", err))
+				app.writeErrorResponse(ctx, w, fmt.Errorf("%s", err))
 			}
 		}()
 		handler.ServeHTTP(w, r)
@@ -22,10 +24,12 @@ func (app *application) recoverPanic(handler http.Handler) http.Handler {
 
 func (app *application) authenticate(h httprouter.Handle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		ctx := r.Context()
+
 		token := getToken(r)
 
 		if token == "" {
-			app.writeErrorResponse(w, &unauthorizedError{msg: "Invalid or missing authentication token"})
+			app.writeErrorResponse(ctx, w, &unauthorizedError{msg: "Invalid or missing authentication token"})
 			return
 		}
 
@@ -51,7 +55,7 @@ func (app *application) serveHTTPAuthenticated(h httprouter.Handle, w http.Respo
 
 	user, err := app.usersService.GetUserByToken(ctx, token)
 	if err != nil {
-		app.writeErrorResponse(w, &unauthorizedError{msg: err.Error()})
+		app.writeErrorResponse(ctx, w, &unauthorizedError{msg: err.Error()})
 		return
 	}
 

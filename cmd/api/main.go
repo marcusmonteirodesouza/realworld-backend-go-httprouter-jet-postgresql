@@ -6,12 +6,12 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
-	"cloud.google.com/go/logging"
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 
@@ -26,77 +26,60 @@ type application struct {
 	articlesService *services.ArticlesService
 	config          *config
 	db              *sql.DB
-	logger          *logging.Logger
+	logger          *slog.Logger
 	profilesService *services.ProfilesService
 	usersService    *services.UsersService
 	wg              sync.WaitGroup
 }
 
 func main() {
-	googleProjectID := os.Getenv("GOOGLE_PROJECT_ID")
-	if googleProjectID == "" {
-		log.Fatal("Environment variable GOOGLE_PROJECT_ID is required")
-	}
-
-	googleCloudRunService := os.Getenv("K_SERVICE")
-	if googleCloudRunService == "" {
-		log.Fatal("Environment variable K_SERVICE is required")
-	}
-
-	ctx := context.Background()
-
-	loggingClient, err := logging.NewClient(ctx, googleProjectID)
-	if err != nil {
-		log.Fatalf("Failed to create logging client: %v", err)
-	}
-	defer loggingClient.Close()
-
-	logger := loggingClient.Logger(googleCloudRunService, logging.RedirectAsJSON(os.Stdout))
 
 	jwtIss := os.Getenv("JWT_ISS")
 	if jwtIss == "" {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable JWT_ISS is required")
+		log.Fatal("Environment variable JWT_ISS is required")
 	}
 
 	jwtKey := os.Getenv("JWT_KEY")
 	if jwtKey == "" {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable JWT_KEY is required")
+		log.Fatal("Environment variable JWT_KEY is required")
 	}
 
 	jwtValidForSeconds, err := strconv.Atoi(os.Getenv("JWT_VALID_FOR_SECONDS"))
 	if err != nil {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable JWT_VALID_FOR_SECONDS is required and must be an integer")
+		log.Fatal("Environment variable JWT_VALID_FOR_SECONDS is required and must be an integer")
 	}
 
 	port, err := strconv.Atoi(os.Getenv("PORT"))
 	if err != nil {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable PORT is required and must be an integer")
+		log.Fatal("Environment variable PORT is required and must be an integer")
 	}
 
 	postgresDB := os.Getenv("POSTGRES_DB")
 	if postgresDB == "" {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable POSTGRES_DB is required")
+		log.Fatal("Environment variable POSTGRES_DB is required")
 	}
 
 	postgresHost := os.Getenv("POSTGRES_HOST")
 	if postgresHost == "" {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable POSTGRES_HOST is required")
+		log.Fatal("Environment variable POSTGRES_HOST is required")
 	}
 
 	postgresPassword := os.Getenv("POSTGRES_PASSWORD")
 	if postgresPassword == "" {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable POSTGRES_PASSWORD is required")
+		log.Fatal("Environment variable POSTGRES_PASSWORD is required")
 	}
 
 	postgresPort, err := strconv.Atoi(os.Getenv("POSTGRES_PORT"))
 	if err != nil {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable POSTGRES_PORT is required")
+		log.Fatal("Environment variable POSTGRES_PORT is required")
 	}
 
 	postgresUser := os.Getenv("POSTGRES_USER")
 	if postgresUser == "" {
-		logger.StandardLogger(logging.Critical).Fatal("Environment variable POSTGRES_USER is required")
+		log.Fatal("Environment variable POSTGRES_USER is required")
 	}
+
+	ctx := context.Background()
 
 	dsn := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
@@ -104,12 +87,12 @@ func main() {
 
 	db, err := openDB(ctx, dsn)
 	if err != nil {
-		logger.StandardLogger(logging.Critical).Fatal(err.Error())
+		log.Fatal(err.Error())
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			logger.StandardLogger(logging.Critical).Fatal(err.Error())
+			log.Fatal(err.Error())
 		}
 	}()
 
@@ -124,6 +107,8 @@ func main() {
 	config := &config{
 		port: port,
 	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	usersServiceJWT := services.NewUsersServiceJWT(jwtIss, []byte(jwtKey), jwtValidForSeconds)
 
@@ -143,7 +128,7 @@ func main() {
 	}
 
 	if err = app.serve(ctx); err != nil {
-		app.logger.StandardLogger(logging.Critical).Fatal(err.Error())
+		log.Fatal(err.Error())
 	}
 }
 

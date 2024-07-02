@@ -41,7 +41,7 @@ func (app *application) getProfile(w http.ResponseWriter, r *http.Request, ps ht
 
 	user, err := app.usersService.GetUserByUsername(ctx, username)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
@@ -53,12 +53,12 @@ func (app *application) getProfile(w http.ResponseWriter, r *http.Request, ps ht
 
 	profile, err := app.profilesService.GetProfile(ctx, user.ID, &followerId)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, newProfileResponse(*profile)); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -69,25 +69,25 @@ func (app *application) followUser(w http.ResponseWriter, r *http.Request, ps ht
 
 	user, err := app.usersService.GetUserByUsername(ctx, username)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	follower := app.contextGetUser(r)
 
 	if err = app.profilesService.FollowUser(ctx, follower.ID, user.ID); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	profile, err := app.profilesService.GetProfile(ctx, user.ID, &follower.ID)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, newProfileResponse(*profile)); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -98,24 +98,24 @@ func (app *application) unfollowUser(w http.ResponseWriter, r *http.Request, ps 
 
 	user, err := app.usersService.GetUserByUsername(ctx, username)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	follower := app.contextGetUser(r)
 
 	if err = app.profilesService.UnfollowUser(ctx, follower.ID, user.ID); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	profile, err := app.profilesService.GetProfile(ctx, user.ID, &follower.ID)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, newProfileResponse(*profile)); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }

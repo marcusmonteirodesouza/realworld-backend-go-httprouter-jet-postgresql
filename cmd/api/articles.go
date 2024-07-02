@@ -34,6 +34,14 @@ type updateArticleRequestArticle struct {
 	Body        *string `json:"body"`
 }
 
+type createCommentRequest struct {
+	Comment createCommentRequestComment `json:"comment"`
+}
+
+type createCommentRequestComment struct {
+	Body string `json:"body"`
+}
+
 type articleResponse struct {
 	Article articleResponseArticle `json:"article"`
 }
@@ -49,6 +57,31 @@ type articleResponseArticle struct {
 	Favorited      bool                   `json:"favorited"`
 	FavoritesCount int                    `json:"favoritesCount"`
 	Author         profileResponseProfile `json:"author"`
+}
+
+type multipleArticlesResponse struct {
+	Articles      []articleResponseArticle `json:"articles"`
+	ArticlesCount int                      `json:"articlesCount"`
+}
+
+type ListOfTagsResponse struct {
+	Tags []string `json:"tags"`
+}
+
+type commentResponse struct {
+	Comment commentResponseComment `json:"comment"`
+}
+
+type commentResponseComment struct {
+	ID        uuid.UUID              `json:"id"`
+	CreatedAt time.Time              `json:"createdAt"`
+	UpdatedAt time.Time              `json:"updatedAt"`
+	Body      string                 `json:"body"`
+	Author    profileResponseProfile `json:"author"`
+}
+
+type multipleCommentsResponse struct {
+	Comments []commentResponseComment `json:"comments"`
 }
 
 func newArticleResponse(article model.Article, articleTags []model.ArticleTag, favorited bool, favoritesCount int, authorProfile services.Profile) articleResponse {
@@ -73,11 +106,6 @@ func newArticleResponse(article model.Article, articleTags []model.ArticleTag, f
 	}
 }
 
-type multipleArticlesResponse struct {
-	Articles      []articleResponseArticle `json:"articles"`
-	ArticlesCount int                      `json:"articlesCount"`
-}
-
 func newMultipleArticlesResponse(articleResponseArticles []articleResponseArticle) multipleArticlesResponse {
 	return multipleArticlesResponse{
 		Articles:      articleResponseArticles,
@@ -85,11 +113,7 @@ func newMultipleArticlesResponse(articleResponseArticles []articleResponseArticl
 	}
 }
 
-type ListOfTagsResponse struct {
-	Tags []string `json:"tags"`
-}
-
-func NewListOfTagsResponse(articleTags []model.ArticleTag) ListOfTagsResponse {
+func newListOfTagsResponse(articleTags []model.ArticleTag) ListOfTagsResponse {
 	tagList := make([]string, len(articleTags))
 	for i, tag := range articleTags {
 		tagList[i] = tag.Name
@@ -100,33 +124,15 @@ func NewListOfTagsResponse(articleTags []model.ArticleTag) ListOfTagsResponse {
 	}
 }
 
-func (app *application) createArticle(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var request createArticleRequest
-
-	err := decodeJSONBody(w, r, &request)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	ctx := r.Context()
-
-	user := app.contextGetUser(r)
-
-	article, err := app.articlesService.CreateArticle(ctx, services.NewCreateArticle(user.ID, request.Article.Title, request.Article.Description, request.Article.Body, request.Article.TagList))
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+func newCommentResponse(comment model.Comment, authorProfile services.Profile) commentResponse {
+	return commentResponse{
+		Comment: commentResponseComment{
+			ID:        comment.ID,
+			CreatedAt: *comment.CreatedAt,
+			UpdatedAt: *comment.UpdatedAt,
+			Body:      comment.Body,
+			Author:    newProfileResponseProfile(authorProfile),
+		},
 	}
 }
 
@@ -144,7 +150,7 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 
 		author, err := app.usersService.GetUserByUsername(ctx, authorUsername)
 		if err != nil {
-			app.writeErrorResponse(w, err)
+			app.writeErrorResponse(ctx, w, err)
 			return
 		}
 
@@ -156,7 +162,7 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 	if favoritedByUsername != "" {
 		favoritedByUser, err := app.usersService.GetUserByUsername(ctx, favoritedByUsername)
 		if err != nil {
-			app.writeErrorResponse(w, err)
+			app.writeErrorResponse(ctx, w, err)
 			return
 		}
 		favoritedByUserId = &favoritedByUser.ID
@@ -173,7 +179,7 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 	if limitParam != "" {
 		limitValue, err := strconv.Atoi(limitParam)
 		if err != nil {
-			app.writeErrorResponse(w, &malformedRequest{
+			app.writeErrorResponse(ctx, w, &malformedRequest{
 				msg: fmt.Sprintf("Query parameter 'limit' must be an integer. Received %s", limitParam),
 			})
 			return
@@ -186,7 +192,7 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 	if offsetParam != "" {
 		offsetValue, err := strconv.Atoi(offsetParam)
 		if err != nil {
-			app.writeErrorResponse(w, &malformedRequest{
+			app.writeErrorResponse(ctx, w, &malformedRequest{
 				msg: fmt.Sprintf("Query parameter 'offset' must be an integer. Received %s", offsetParam),
 			})
 			return
@@ -202,18 +208,18 @@ func (app *application) listArticles(w http.ResponseWriter, r *http.Request, _ h
 		Offset:            &offset,
 	})
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	multipleArticleResponse, err := app.makeMultipleArticlesResponse(ctx, user, *articles)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, multipleArticleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -229,7 +235,7 @@ func (app *application) feedArticles(w http.ResponseWriter, r *http.Request, _ h
 	if limitParam != "" {
 		limitValue, err := strconv.Atoi(limitParam)
 		if err != nil {
-			app.writeErrorResponse(w, &malformedRequest{
+			app.writeErrorResponse(ctx, w, &malformedRequest{
 				msg: fmt.Sprintf("Query parameter 'limit' must be an integer. Received %s", limitParam),
 			})
 			return
@@ -242,7 +248,7 @@ func (app *application) feedArticles(w http.ResponseWriter, r *http.Request, _ h
 	if offsetParam != "" {
 		offsetValue, err := strconv.Atoi(offsetParam)
 		if err != nil {
-			app.writeErrorResponse(w, &malformedRequest{
+			app.writeErrorResponse(ctx, w, &malformedRequest{
 				msg: fmt.Sprintf("Query parameter 'offset' must be an integer. Received %s", offsetParam),
 			})
 			return
@@ -254,7 +260,7 @@ func (app *application) feedArticles(w http.ResponseWriter, r *http.Request, _ h
 
 	followedProfiles, err := app.profilesService.ListFollowedProfiles(ctx, user.ID)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
@@ -268,18 +274,18 @@ func (app *application) feedArticles(w http.ResponseWriter, r *http.Request, _ h
 		Offset:    &offset,
 	})
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	multipleArticleResponse, err := app.makeMultipleArticlesResponse(ctx, user, *articles)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, multipleArticleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -292,31 +298,61 @@ func (app *application) getArticleBySlug(w http.ResponseWriter, r *http.Request,
 
 	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
+	}
+}
+
+func (app *application) createArticle(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
+	var request createArticleRequest
+
+	err := decodeJSONBody(w, r, &request)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	user := app.contextGetUser(r)
+
+	article, err := app.articlesService.CreateArticle(ctx, services.NewCreateArticle(user.ID, request.Article.Title, request.Article.Description, request.Article.Body, request.Article.TagList))
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusCreated, articleResponse); err != nil {
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
 func (app *application) updateArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
 	var request updateArticleRequest
 
 	err := decodeJSONBody(w, r, &request)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
-
-	ctx := r.Context()
 
 	user := app.contextGetUser(r)
 
@@ -324,29 +360,29 @@ func (app *application) updateArticle(w http.ResponseWriter, r *http.Request, ps
 
 	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if *article.AuthorID != user.ID {
-		app.writeErrorResponse(w, &forbiddenError{msg: fmt.Sprintf("User %s cannot update article with slug %s", user.Username, article.Slug)})
+		app.writeErrorResponse(ctx, w, &forbiddenError{msg: fmt.Sprintf("User %s cannot update article with slug %s", user.Username, article.Slug)})
 		return
 	}
 
 	article, err = app.articlesService.UpdateArticle(ctx, article.ID, services.UpdateArticle{Title: request.Article.Title, Description: request.Article.Description, Body: request.Article.Body})
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -359,17 +395,123 @@ func (app *application) deleteArticle(w http.ResponseWriter, r *http.Request, ps
 
 	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if *article.AuthorID != user.ID {
-		app.writeErrorResponse(w, &forbiddenError{msg: fmt.Sprintf("User %s cannot delete article with slug %s", user.Username, article.Slug)})
+		app.writeErrorResponse(ctx, w, &forbiddenError{msg: fmt.Sprintf("User %s cannot delete article with slug %s", user.Username, article.Slug)})
 		return
 	}
 
 	if err = app.articlesService.DeleteArticle(ctx, article.ID); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+}
+
+func (app *application) addCommentToArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	var request createCommentRequest
+
+	err := decodeJSONBody(w, r, &request)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	user := app.contextGetUser(r)
+
+	slug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, slug)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	comment, err := app.articlesService.CreateComment(ctx, article.ID, user.ID, request.Comment.Body)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	commentResponse, err := app.makeCommentResponse(ctx, *comment, user)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusCreated, commentResponse); err != nil {
+		app.writeErrorResponse(ctx, w, err)
+	}
+}
+
+func (app *application) getCommentsFromArticle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	slug := ps.ByName("slug")
+
+	article, err := app.articlesService.GetArticleBySlug(ctx, slug)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	comments, err := app.articlesService.ListComments(ctx, services.ListComments{ArticleID: &article.ID})
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	multipleCommentsResponse, err := app.makeMultipleCommentsResponse(ctx, *comments, user)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	if err = writeJSON(w, http.StatusOK, multipleCommentsResponse); err != nil {
+		app.writeErrorResponse(ctx, w, err)
+	}
+}
+
+func (app *application) deleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
+	user := app.contextGetUser(r)
+
+	slug := ps.ByName("slug")
+
+	_, err := app.articlesService.GetArticleBySlug(ctx, slug)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	commentIdString := ps.ByName("commentId")
+
+	commentId, err := uuid.Parse(commentIdString)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	comment, err := app.articlesService.GetCommentById(ctx, commentId)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	if *comment.AuthorID != user.ID {
+		app.writeErrorResponse(ctx, w, &forbiddenError{msg: fmt.Sprintf("User %s cannot delete comment %s", user.ID, comment.AuthorID)})
+		return
+	}
+
+	if err = app.articlesService.DeleteComment(ctx, comment.ID); err != nil {
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 }
@@ -383,29 +525,29 @@ func (app *application) favoriteArticle(w http.ResponseWriter, r *http.Request, 
 
 	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = app.articlesService.FavoriteArticle(ctx, user.ID, article.ID); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	article, err = app.articlesService.GetArticleBySlug(ctx, article.Slug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -418,29 +560,29 @@ func (app *application) unfavoriteArticle(w http.ResponseWriter, r *http.Request
 
 	article, err := app.articlesService.GetArticleBySlug(ctx, articleSlug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = app.articlesService.UnfavoriteArticle(ctx, user.ID, article.ID); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	article, err = app.articlesService.GetArticleBySlug(ctx, article.Slug)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	articleResponse, err := app.makeArticleResponse(ctx, user, *article)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	if err = writeJSON(w, http.StatusOK, articleResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -449,14 +591,14 @@ func (app *application) getTags(w http.ResponseWriter, r *http.Request, _ httpro
 
 	tags, err := app.articlesService.ListTags(ctx, services.ListTags{ArticleID: nil})
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
-	listOfTagsResponse := NewListOfTagsResponse(*tags)
+	listOfTagsResponse := newListOfTagsResponse(*tags)
 
 	if err = writeJSON(w, http.StatusOK, listOfTagsResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
@@ -511,4 +653,41 @@ func (app *application) makeMultipleArticlesResponse(ctx context.Context, user *
 	multipleArticleResponse := newMultipleArticlesResponse(articleResponseArticles)
 
 	return &multipleArticleResponse, nil
+}
+
+func (app *application) makeCommentResponse(ctx context.Context, comment model.Comment, user *model.Users) (*commentResponse, error) {
+	var authorProfile *services.Profile
+	var err error
+
+	if user != nil {
+		authorProfile, err = app.profilesService.GetProfile(ctx, *comment.AuthorID, &user.ID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		authorProfile, err = app.profilesService.GetProfile(ctx, *comment.AuthorID, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	commentResponse := newCommentResponse(comment, *authorProfile)
+
+	return &commentResponse, nil
+}
+
+func (app *application) makeMultipleCommentsResponse(ctx context.Context, comments []model.Comment, user *model.Users) (*multipleCommentsResponse, error) {
+	commentResponseComments := make([]commentResponseComment, len(comments))
+
+	for i, comment := range comments {
+		commentResponse, err := app.makeCommentResponse(ctx, comment, user)
+		if err != nil {
+			return nil, err
+		}
+		commentResponseComments[i] = commentResponse.Comment
+	}
+
+	multipleCommentsResponse := multipleCommentsResponse{Comments: commentResponseComments}
+
+	return &multipleCommentsResponse, nil
 }

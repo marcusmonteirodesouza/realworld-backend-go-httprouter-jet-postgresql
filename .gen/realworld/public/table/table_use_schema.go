@@ -13,6 +13,7 @@ func UseSchema(schema string) {
 	Article = Article.FromSchema(schema)
 	ArticleArticleTag = ArticleArticleTag.FromSchema(schema)
 	ArticleTag = ArticleTag.FromSchema(schema)
+	Comment = Comment.FromSchema(schema)
 	Favorite = Favorite.FromSchema(schema)
 	Follow = Follow.FromSchema(schema)
 	SchemaMigrations = SchemaMigrations.FromSchema(schema)

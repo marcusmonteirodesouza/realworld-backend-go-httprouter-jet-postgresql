@@ -3,12 +3,11 @@ package services
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"cloud.google.com/go/logging"
 	. "github.com/go-jet/jet/v2/postgres"
 	"github.com/go-jet/jet/v2/qrm"
 	"github.com/google/uuid"
@@ -19,11 +18,11 @@ import (
 
 type ArticlesService struct {
 	db           *sql.DB
-	logger       *logging.Logger
+	logger       *slog.Logger
 	usersService *UsersService
 }
 
-func NewArticlesService(db *sql.DB, logger *logging.Logger, usersService *UsersService) ArticlesService {
+func NewArticlesService(db *sql.DB, logger *slog.Logger, usersService *UsersService) ArticlesService {
 	return ArticlesService{
 		db:           db,
 		logger:       logger,
@@ -67,10 +66,12 @@ type ListTags struct {
 	ArticleID *uuid.UUID
 }
 
+type ListComments struct {
+	ArticleID *uuid.UUID
+}
+
 func (articlesService *ArticlesService) CreateArticle(ctx context.Context, createArticle CreateArticle) (*model.Article, error) {
-	if createArticleBytes, err := json.Marshal(createArticle); err == nil {
-		articlesService.logger.StandardLogger(logging.Info).Printf("Creating article. %s", string(createArticleBytes))
-	}
+	articlesService.logger.InfoContext(ctx, "Creating article", "authorID", createArticle.AuthorID, "title", createArticle.Title, "description", createArticle.Description, "body", createArticle.Body, "tagList", createArticle.TagList)
 
 	author, err := articlesService.usersService.GetUserById(ctx, createArticle.AuthorID)
 	if err != nil {
@@ -115,7 +116,7 @@ func (articlesService *ArticlesService) CreateArticle(ctx context.Context, creat
 
 					insertTagStmt := ArticleTag.INSERT(ArticleTag.Name).MODEL(tagModel).RETURNING(ArticleTag.AllColumns)
 
-					articlesService.logger.StandardLogger(logging.Info).Printf("Creating article tag %s", tagModel.Name)
+					articlesService.logger.InfoContext(ctx, "Creating article tag", "name", tagModel.Name)
 
 					if err = insertTagStmt.QueryContext(ctx, tx, &tagModel); err != nil {
 						return nil, err
@@ -228,9 +229,7 @@ func (articlesService *ArticlesService) ListArticles(ctx context.Context, listAr
 }
 
 func (articlesService *ArticlesService) UpdateArticle(ctx context.Context, articleId uuid.UUID, updateArticle UpdateArticle) (*model.Article, error) {
-	if updateArticleBytes, err := json.Marshal(updateArticle); err == nil {
-		articlesService.logger.StandardLogger(logging.Info).Printf("Updating article %s. %s", articleId.String(), string(updateArticleBytes))
-	}
+	articlesService.logger.InfoContext(ctx, "Updating article", "articleId", articleId, "title", updateArticle.Title, "description", updateArticle.Description, "body", updateArticle.Body)
 
 	article, err := articlesService.GetArticleById(ctx, articleId)
 	if err != nil {
@@ -274,27 +273,8 @@ func (articlesService *ArticlesService) UpdateArticle(ctx context.Context, artic
 	return article, nil
 }
 
-func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags ListTags) (*[]model.ArticleTag, error) {
-	var tags []model.ArticleTag
-
-	condition := Bool(true)
-
-	if listTags.ArticleID != nil {
-		condition = condition.AND(ArticleTag.ID.IN(ArticleArticleTag.SELECT(ArticleArticleTag.ArticleTagID).WHERE(ArticleArticleTag.ArticleID.EQ(UUID(listTags.ArticleID)))))
-	}
-
-	listTagsStmt := SELECT(ArticleTag.AllColumns).FROM(ArticleTag).WHERE(condition).ORDER_BY(ArticleTag.Name)
-
-	err := listTagsStmt.QueryContext(ctx, articlesService.db, &tags)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tags, nil
-}
-
 func (articlesService *ArticlesService) DeleteArticle(ctx context.Context, articleId uuid.UUID) error {
-	articlesService.logger.StandardLogger(logging.Info).Printf("Deleting article %s", articleId.String())
+	articlesService.logger.InfoContext(ctx, "Deleting article", "articleId", articleId)
 
 	deleteArticleStmt := Article.DELETE().WHERE(Article.ID.EQ(UUID(articleId)))
 
@@ -315,8 +295,92 @@ func (articlesService *ArticlesService) DeleteArticle(ctx context.Context, artic
 	return nil
 }
 
+func (articlesService *ArticlesService) CreateComment(ctx context.Context, articleId uuid.UUID, authorId uuid.UUID, body string) (*model.Comment, error) {
+	articlesService.logger.InfoContext(ctx, "Creating comment", "articleId", articleId, "authorId", authorId, "body", body)
+
+	article, err := articlesService.GetArticleById(ctx, articleId)
+	if err != nil {
+		return nil, err
+	}
+
+	author, err := articlesService.usersService.GetUserById(ctx, authorId)
+	if err != nil {
+		return nil, err
+	}
+
+	comment := model.Comment{
+		ArticleID: &article.ID,
+		AuthorID:  &author.ID,
+		Body:      body,
+	}
+
+	addCommentStmt := Comment.INSERT(Comment.ArticleID, Comment.AuthorID, Comment.Body).MODEL(comment).RETURNING(Comment.AllColumns)
+	if err = addCommentStmt.QueryContext(ctx, articlesService.db, &comment); err != nil {
+		return nil, err
+	}
+
+	return &comment, nil
+}
+
+func (articlesService *ArticlesService) GetCommentById(ctx context.Context, commentId uuid.UUID) (*model.Comment, error) {
+	var comment model.Comment
+
+	getCommentStmt := SELECT(Comment.AllColumns).FROM(Comment).WHERE(Comment.ID.EQ(UUID(commentId)))
+
+	err := getCommentStmt.QueryContext(ctx, articlesService.db, &comment)
+	if err != nil {
+		if errors.Is(err, qrm.ErrNoRows) {
+			return nil, &NotFoundError{msg: fmt.Sprintf("Comment %s not found", commentId)}
+		}
+		return nil, err
+	}
+
+	return &comment, nil
+}
+
+func (articlesService *ArticlesService) ListComments(ctx context.Context, listComments ListComments) (*[]model.Comment, error) {
+	condition := Bool(true)
+
+	if listComments.ArticleID != nil {
+		condition = condition.AND(Comment.ArticleID.EQ(UUID(listComments.ArticleID)))
+	}
+
+	var comments []model.Comment
+
+	listCommentsStmt := SELECT(Comment.AllColumns).FROM(Comment).WHERE(condition).ORDER_BY(Comment.CreatedAt.DESC())
+
+	err := listCommentsStmt.QueryContext(ctx, articlesService.db, &comments)
+	if err != nil {
+		return nil, err
+	}
+
+	return &comments, nil
+}
+
+func (articlesService *ArticlesService) DeleteComment(ctx context.Context, commentId uuid.UUID) error {
+	articlesService.logger.InfoContext(ctx, "Deleting comment", "commentId", commentId)
+
+	deleteCommentStmt := Comment.DELETE().WHERE(Comment.ID.EQ(UUID(commentId)))
+
+	deleteCommentSqlResult, err := deleteCommentStmt.ExecContext(ctx, articlesService.db)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := deleteCommentSqlResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return &NotFoundError{msg: fmt.Sprintf("Comment %s not found", commentId)}
+	}
+
+	return nil
+}
+
 func (articlesService *ArticlesService) FavoriteArticle(ctx context.Context, userId uuid.UUID, articleId uuid.UUID) error {
-	articlesService.logger.StandardLogger(logging.Info).Printf("User %s favoriting article %s", userId.String(), articleId.String())
+	articlesService.logger.InfoContext(ctx, "Favoriting article", "userId", userId, "articleId", articleId)
 
 	isFavorite, err := articlesService.IsFavorite(ctx, userId, articleId)
 	if err != nil {
@@ -353,7 +417,7 @@ func (articlesService *ArticlesService) FavoriteArticle(ctx context.Context, use
 }
 
 func (articlesService *ArticlesService) UnfavoriteArticle(ctx context.Context, userId uuid.UUID, articleId uuid.UUID) error {
-	articlesService.logger.StandardLogger(logging.Info).Printf("User %s unfavoriting article %s", userId.String(), articleId.String())
+	articlesService.logger.InfoContext(ctx, "Unfavoriting article", "userId", userId, "articleId", articleId)
 
 	isFavorite, err := articlesService.IsFavorite(ctx, userId, articleId)
 	if err != nil {
@@ -402,6 +466,25 @@ func (articlesService *ArticlesService) GetFavoritesCount(ctx context.Context, a
 	}
 
 	return &favoritesCountDest.FavoritesCount, nil
+}
+
+func (articlesService *ArticlesService) ListTags(ctx context.Context, listTags ListTags) (*[]model.ArticleTag, error) {
+	var tags []model.ArticleTag
+
+	condition := Bool(true)
+
+	if listTags.ArticleID != nil {
+		condition = condition.AND(ArticleTag.ID.IN(ArticleArticleTag.SELECT(ArticleArticleTag.ArticleTagID).WHERE(ArticleArticleTag.ArticleID.EQ(UUID(listTags.ArticleID)))))
+	}
+
+	listTagsStmt := SELECT(ArticleTag.AllColumns).FROM(ArticleTag).WHERE(condition).ORDER_BY(ArticleTag.Name)
+
+	err := listTagsStmt.QueryContext(ctx, articlesService.db, &tags)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tags, nil
 }
 
 func (articlesService *ArticlesService) getTagByName(ctx context.Context, tagName string) (*model.ArticleTag, error) {
