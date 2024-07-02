@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"cloud.google.com/go/logging"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/internal/services"
 )
 
@@ -98,8 +98,8 @@ func writeJSON(w http.ResponseWriter, status int, data any) error {
 	return nil
 }
 
-func (app *application) writeErrorResponse(w http.ResponseWriter, err error) {
-	app.logger.StandardLogger(logging.Error).Print(err.Error())
+func (app *application) writeErrorResponse(ctx context.Context, w http.ResponseWriter, err error) {
+	app.logger.ErrorContext(ctx, err.Error())
 
 	var msg string
 	var status int

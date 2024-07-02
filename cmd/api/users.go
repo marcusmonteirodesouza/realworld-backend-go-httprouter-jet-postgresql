@@ -64,7 +64,84 @@ func newUserResponse(user model.Users, token string) userResponse {
 	}
 }
 
+func (app *application) login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
+	var request loginRequest
+
+	err := decodeJSONBody(w, r, &request)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	user, err := app.usersService.GetUserByEmail(ctx, request.User.Email)
+	if err != nil {
+		if errNotFound, ok := err.(*services.NotFoundError); ok {
+			app.writeErrorResponse(ctx, w, &unauthorizedError{msg: errNotFound.Error()})
+		} else {
+			app.writeErrorResponse(ctx, w, err)
+		}
+		return
+	}
+
+	isCorrectPassword, err := app.usersService.CheckPassword(ctx, user.ID, request.User.Password)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	if !(*isCorrectPassword) {
+		app.writeErrorResponse(ctx, w, &unauthorizedError{msg: fmt.Sprintf("Incorrect password for user %s", user.ID)})
+		return
+	}
+
+	token, err := app.usersService.GetToken(ctx, user)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	userResponse := newUserResponse(*user, *token)
+
+	if err = writeJSON(w, http.StatusOK, userResponse); err != nil {
+		app.writeErrorResponse(ctx, w, err)
+	}
+}
+
+func (app *application) registerUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
+	var request registerUserRequest
+
+	err := decodeJSONBody(w, r, &request)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	user, err := app.usersService.RegisterUser(ctx, services.NewRegisterUser(request.User.Email, request.User.Username, request.User.Password))
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	token, err := app.usersService.GetToken(ctx, user)
+	if err != nil {
+		app.writeErrorResponse(ctx, w, err)
+		return
+	}
+
+	userResponse := newUserResponse(*user, *token)
+
+	if err = writeJSON(w, http.StatusCreated, userResponse); err != nil {
+		app.writeErrorResponse(ctx, w, err)
+	}
+}
+
 func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
 	user := app.contextGetUser(r)
 	token := app.contextGetToken(r)
 
@@ -72,95 +149,20 @@ func (app *application) getCurrentUser(w http.ResponseWriter, r *http.Request, _
 
 	err := writeJSON(w, http.StatusOK, userResponse)
 	if err != nil {
-		app.writeErrorResponse(w, err)
-	}
-}
-
-func (app *application) login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var request loginRequest
-
-	err := decodeJSONBody(w, r, &request)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	ctx := r.Context()
-
-	user, err := app.usersService.GetUserByEmail(ctx, request.User.Email)
-	if err != nil {
-		if errNotFound, ok := err.(*services.NotFoundError); ok {
-			app.writeErrorResponse(w, &unauthorizedError{msg: errNotFound.Error()})
-		} else {
-			app.writeErrorResponse(w, err)
-		}
-		return
-	}
-
-	isCorrectPassword, err := app.usersService.CheckPassword(ctx, user.ID, request.User.Password)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	if !(*isCorrectPassword) {
-		app.writeErrorResponse(w, &unauthorizedError{msg: fmt.Sprintf("Incorrect password for user %s", user.ID)})
-		return
-	}
-
-	token, err := app.usersService.GetToken(user)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	userResponse := newUserResponse(*user, *token)
-
-	if err = writeJSON(w, http.StatusOK, userResponse); err != nil {
-		app.writeErrorResponse(w, err)
-	}
-}
-
-func (app *application) registerUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var request registerUserRequest
-
-	err := decodeJSONBody(w, r, &request)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	ctx := r.Context()
-
-	user, err := app.usersService.RegisterUser(ctx, services.NewRegisterUser(request.User.Email, request.User.Username, request.User.Password))
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	token, err := app.usersService.GetToken(user)
-	if err != nil {
-		app.writeErrorResponse(w, err)
-		return
-	}
-
-	userResponse := newUserResponse(*user, *token)
-
-	if err = writeJSON(w, http.StatusCreated, userResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }
 
 func (app *application) updateUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+
 	var request updateUserRequest
 
 	err := decodeJSONBody(w, r, &request)
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
-
-	ctx := r.Context()
 
 	user := app.contextGetUser(r)
 
@@ -168,13 +170,13 @@ func (app *application) updateUser(w http.ResponseWriter, r *http.Request, _ htt
 
 	user, err = app.usersService.UpdateUser(ctx, user.ID, services.UpdateUser{Email: request.User.Email, Username: request.User.Username, Password: request.User.Password, Bio: request.User.Bio, Image: request.User.Image})
 	if err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 		return
 	}
 
 	userResponse := newUserResponse(*user, token)
 
 	if err = writeJSON(w, http.StatusOK, userResponse); err != nil {
-		app.writeErrorResponse(w, err)
+		app.writeErrorResponse(ctx, w, err)
 	}
 }

@@ -3,14 +3,13 @@ package services
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"net/url"
 	"time"
 
-	"cloud.google.com/go/logging"
 	. "github.com/go-jet/jet/v2/postgres"
 	"github.com/go-jet/jet/v2/qrm"
 	"github.com/golang-jwt/jwt/v5"
@@ -22,7 +21,7 @@ import (
 type UsersService struct {
 	db     *sql.DB
 	jwt    *UsersServiceJWT
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 type UsersServiceJWT struct {
@@ -33,7 +32,7 @@ type UsersServiceJWT struct {
 	validForSeconds int
 }
 
-func NewUsersService(db *sql.DB, jwt *UsersServiceJWT, logger *logging.Logger) UsersService {
+func NewUsersService(db *sql.DB, jwt *UsersServiceJWT, logger *slog.Logger) UsersService {
 	return UsersService{
 		db:     db,
 		jwt:    jwt,
@@ -78,17 +77,7 @@ type UpdateUser struct {
 }
 
 func (usersService *UsersService) RegisterUser(ctx context.Context, registerUser RegisterUser) (*model.Users, error) {
-	type registerUserForLogging struct {
-		Email    string
-		Username string
-	}
-
-	if registerUserForLoggingBytes, err := json.Marshal(registerUserForLogging{
-		Email:    registerUser.Email,
-		Username: registerUser.Username,
-	}); err == nil {
-		usersService.logger.StandardLogger(logging.Info).Printf("Registering user. %s", string(registerUserForLoggingBytes))
-	}
+	usersService.logger.InfoContext(ctx, "Registering user", "email", registerUser.Email, "username", registerUser.Username)
 
 	err := usersService.validateEmail(ctx, registerUser.Email)
 	if err != nil {
@@ -221,23 +210,7 @@ func (usersService *UsersService) ListUsers(ctx context.Context, listUsers ListU
 }
 
 func (usersService *UsersService) UpdateUser(ctx context.Context, userId uuid.UUID, updateUser UpdateUser) (*model.Users, error) {
-	type updateUserForLogging struct {
-		Email            *string
-		Username         *string
-		UpdatingPassword bool
-		Bio              *string
-		Image            *string
-	}
-
-	if updateUserForLoggingBytes, err := json.Marshal(updateUserForLogging{
-		Email:            updateUser.Email,
-		Username:         updateUser.Username,
-		UpdatingPassword: updateUser.Password != nil,
-		Bio:              updateUser.Bio,
-		Image:            updateUser.Image,
-	}); err == nil {
-		usersService.logger.StandardLogger(logging.Info).Printf("Updating user %s. %s", userId, string(updateUserForLoggingBytes))
-	}
+	usersService.logger.InfoContext(ctx, "Updating user", "userId", userId, "email", updateUser.Email, "username", updateUser.Username, "bio", updateUser.Bio, "image", updateUser.Image, "isUpdatingPassword", updateUser.Password != nil)
 
 	user, err := usersService.GetUserById(ctx, userId)
 	if err != nil {
@@ -312,7 +285,9 @@ func (usersService *UsersService) CheckPassword(ctx context.Context, userId uuid
 	return &dest.IsCorrectPassword, nil
 }
 
-func (usersService *UsersService) GetToken(user *model.Users) (*string, error) {
+func (usersService *UsersService) GetToken(ctx context.Context, user *model.Users) (*string, error) {
+	usersService.logger.InfoContext(ctx, "Getting token", "userId", user.ID)
+
 	now := time.Now()
 
 	exp := now.Add(time.Second * time.Duration(usersService.jwt.validForSeconds))

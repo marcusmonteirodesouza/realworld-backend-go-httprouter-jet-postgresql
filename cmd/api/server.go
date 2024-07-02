@@ -9,15 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"cloud.google.com/go/logging"
 )
 
 func (app *application) serve(ctx context.Context) error {
 	srv := &http.Server{
-		Addr:     fmt.Sprintf(":%d", app.config.port),
-		Handler:  app.routes(),
-		ErrorLog: app.logger.StandardLogger(logging.Error),
+		Addr:    fmt.Sprintf(":%d", app.config.port),
+		Handler: app.routes(),
 	}
 
 	shutdownError := make(chan error)
@@ -29,7 +26,7 @@ func (app *application) serve(ctx context.Context) error {
 
 		s := <-quit
 
-		app.logger.StandardLogger(logging.Info).Printf("Caught signal %s", s.String())
+		app.logger.InfoContext(ctx, fmt.Sprintf("Caught signal %s", s.String()))
 
 		ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 
@@ -40,14 +37,14 @@ func (app *application) serve(ctx context.Context) error {
 			shutdownError <- err
 		}
 
-		app.logger.StandardLogger(logging.Info).Println("Completing background tasks")
+		app.logger.InfoContext(ctx, "Completing background tasks")
 
 		app.wg.Wait()
 
 		shutdownError <- nil
 	}()
 
-	app.logger.StandardLogger(logging.Info).Printf("Starting server on port :%d", app.config.port)
+	app.logger.InfoContext(ctx, fmt.Sprintf("Starting server on port %d", app.config.port))
 
 	err := srv.ListenAndServe()
 	if !errors.Is(err, http.ErrServerClosed) {
@@ -59,7 +56,7 @@ func (app *application) serve(ctx context.Context) error {
 		return err
 	}
 
-	app.logger.StandardLogger(logging.Info).Println("Server stopped")
+	app.logger.InfoContext(ctx, "Server stopped")
 
 	return nil
 }

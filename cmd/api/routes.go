@@ -33,11 +33,14 @@ func (app *application) routes() http.Handler {
 			}
 		}
 	}())
+	router.GET("/articles/:slug/comments", app.authenticateOptional(app.getCommentsFromArticle))
 	router.POST("/articles", app.authenticate(app.createArticle))
+	router.POST("/articles/:slug/comments", app.authenticate(app.addCommentToArticle))
 	router.POST("/articles/:slug/favorite", app.authenticate(app.favoriteArticle))
 	router.PUT("/articles/:slug", app.authenticate(app.updateArticle))
 	router.DELETE("/articles/:slug", app.authenticate(app.deleteArticle))
 	router.DELETE("/articles/:slug/favorite", app.authenticate(app.unfavoriteArticle))
+	router.DELETE("/articles/:slug/comments/:commentId", app.authenticate(app.deleteComment))
 
 	router.GET("/tags", app.getTags)
 

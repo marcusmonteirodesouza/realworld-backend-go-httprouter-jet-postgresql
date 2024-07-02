@@ -3,8 +3,8 @@ package services
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 
-	"cloud.google.com/go/logging"
 	. "github.com/go-jet/jet/v2/postgres"
 	"github.com/google/uuid"
 	"github.com/marcusmonteirodesouza/realworld-backend-go-jet-postgresql/.gen/realworld/public/model"
@@ -13,11 +13,11 @@ import (
 
 type ProfilesService struct {
 	db           *sql.DB
-	logger       *logging.Logger
+	logger       *slog.Logger
 	usersService *UsersService
 }
 
-func NewProfilesService(db *sql.DB, logger *logging.Logger, usersService *UsersService) ProfilesService {
+func NewProfilesService(db *sql.DB, logger *slog.Logger, usersService *UsersService) ProfilesService {
 	return ProfilesService{
 		db:           db,
 		logger:       logger,
@@ -64,7 +64,7 @@ func (profilesService *ProfilesService) GetProfile(ctx context.Context, userId u
 }
 
 func (profilesService *ProfilesService) FollowUser(ctx context.Context, followerId uuid.UUID, followedId uuid.UUID) error {
-	profilesService.logger.StandardLogger(logging.Info).Printf("User %s following user %s", followedId.String(), followedId.String())
+	profilesService.logger.InfoContext(ctx, "Following user", "followerId", followerId, "followedId", followedId)
 
 	isFollowing, err := profilesService.IsFollowing(ctx, followerId, followedId)
 	if err != nil {
@@ -100,7 +100,7 @@ func (profilesService *ProfilesService) FollowUser(ctx context.Context, follower
 }
 
 func (profilesService *ProfilesService) UnfollowUser(ctx context.Context, followerId uuid.UUID, followedId uuid.UUID) error {
-	profilesService.logger.StandardLogger(logging.Info).Printf("User %s unfollowing user %s", followedId.String(), followedId.String())
+	profilesService.logger.InfoContext(ctx, "Unfollowing user", "followerId", followerId, "followedId", followedId)
 
 	isFollowing, err := profilesService.IsFollowing(ctx, followerId, followedId)
 	if err != nil {
@@ -122,7 +122,6 @@ func (profilesService *ProfilesService) UnfollowUser(ctx context.Context, follow
 }
 
 func (profilesService *ProfilesService) ListFollowedProfiles(ctx context.Context, userId uuid.UUID) (*[]Profile, error) {
-	profilesService.logger.StandardLogger(logging.Alert).Printf("userId %s", userId.String())
 	var followedIds []uuid.UUID
 
 	var follows []model.Follow
