@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-type Favorite struct {
+type ArticleFavorite struct {
 	ID        uuid.UUID `sql:"primary_key"`
 	UserID    *uuid.UUID
 	ArticleID *uuid.UUID

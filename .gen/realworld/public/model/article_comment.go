@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-type Comment struct {
+type ArticleComment struct {
 	ID        uuid.UUID `sql:"primary_key"`
 	AuthorID  *uuid.UUID
 	ArticleID *uuid.UUID

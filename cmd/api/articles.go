@@ -124,7 +124,7 @@ func newListOfTagsResponse(articleTags []model.ArticleTag) ListOfTagsResponse {
 	}
 }
 
-func newCommentResponse(comment model.Comment, authorProfile services.Profile) commentResponse {
+func newCommentResponse(comment model.ArticleComment, authorProfile services.Profile) commentResponse {
 	return commentResponse{
 		Comment: commentResponseComment{
 			ID:        comment.ID,
@@ -655,7 +655,7 @@ func (app *application) makeMultipleArticlesResponse(ctx context.Context, user *
 	return &multipleArticleResponse, nil
 }
 
-func (app *application) makeCommentResponse(ctx context.Context, comment model.Comment, user *model.Users) (*commentResponse, error) {
+func (app *application) makeCommentResponse(ctx context.Context, comment model.ArticleComment, user *model.Users) (*commentResponse, error) {
 	var authorProfile *services.Profile
 	var err error
 
@@ -676,7 +676,7 @@ func (app *application) makeCommentResponse(ctx context.Context, comment model.C
 	return &commentResponse, nil
 }
 
-func (app *application) makeMultipleCommentsResponse(ctx context.Context, comments []model.Comment, user *model.Users) (*multipleCommentsResponse, error) {
+func (app *application) makeMultipleCommentsResponse(ctx context.Context, comments []model.ArticleComment, user *model.Users) (*multipleCommentsResponse, error) {
 	commentResponseComments := make([]commentResponseComment, len(comments))
 
 	for i, comment := range comments {

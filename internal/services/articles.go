@@ -198,7 +198,7 @@ func (articlesService *ArticlesService) ListArticles(ctx context.Context, listAr
 	}
 
 	if listArticles.FavoritedByUserID != nil {
-		condition = condition.AND(Article.ID.IN(SELECT(Favorite.ArticleID).FROM(Favorite).WHERE(Favorite.UserID.EQ(UUID(*listArticles.FavoritedByUserID)))))
+		condition = condition.AND(Article.ID.IN(SELECT(ArticleFavorite.ArticleID).FROM(ArticleFavorite).WHERE(ArticleFavorite.UserID.EQ(UUID(*listArticles.FavoritedByUserID)))))
 	}
 
 	if listArticles.TagName != nil {
@@ -295,7 +295,7 @@ func (articlesService *ArticlesService) DeleteArticle(ctx context.Context, artic
 	return nil
 }
 
-func (articlesService *ArticlesService) CreateComment(ctx context.Context, articleId uuid.UUID, authorId uuid.UUID, body string) (*model.Comment, error) {
+func (articlesService *ArticlesService) CreateComment(ctx context.Context, articleId uuid.UUID, authorId uuid.UUID, body string) (*model.ArticleComment, error) {
 	articlesService.logger.InfoContext(ctx, "Creating comment", "articleId", articleId, "authorId", authorId, "body", body)
 
 	article, err := articlesService.GetArticleById(ctx, articleId)
@@ -308,13 +308,13 @@ func (articlesService *ArticlesService) CreateComment(ctx context.Context, artic
 		return nil, err
 	}
 
-	comment := model.Comment{
+	comment := model.ArticleComment{
 		ArticleID: &article.ID,
 		AuthorID:  &author.ID,
 		Body:      body,
 	}
 
-	addCommentStmt := Comment.INSERT(Comment.ArticleID, Comment.AuthorID, Comment.Body).MODEL(comment).RETURNING(Comment.AllColumns)
+	addCommentStmt := ArticleComment.INSERT(ArticleComment.ArticleID, ArticleComment.AuthorID, ArticleComment.Body).MODEL(comment).RETURNING(ArticleComment.AllColumns)
 	if err = addCommentStmt.QueryContext(ctx, articlesService.db, &comment); err != nil {
 		return nil, err
 	}
@@ -322,10 +322,10 @@ func (articlesService *ArticlesService) CreateComment(ctx context.Context, artic
 	return &comment, nil
 }
 
-func (articlesService *ArticlesService) GetCommentById(ctx context.Context, commentId uuid.UUID) (*model.Comment, error) {
-	var comment model.Comment
+func (articlesService *ArticlesService) GetCommentById(ctx context.Context, commentId uuid.UUID) (*model.ArticleComment, error) {
+	var comment model.ArticleComment
 
-	getCommentStmt := SELECT(Comment.AllColumns).FROM(Comment).WHERE(Comment.ID.EQ(UUID(commentId)))
+	getCommentStmt := SELECT(ArticleComment.AllColumns).FROM(ArticleComment).WHERE(ArticleComment.ID.EQ(UUID(commentId)))
 
 	err := getCommentStmt.QueryContext(ctx, articlesService.db, &comment)
 	if err != nil {
@@ -338,16 +338,16 @@ func (articlesService *ArticlesService) GetCommentById(ctx context.Context, comm
 	return &comment, nil
 }
 
-func (articlesService *ArticlesService) ListComments(ctx context.Context, listComments ListComments) (*[]model.Comment, error) {
+func (articlesService *ArticlesService) ListComments(ctx context.Context, listComments ListComments) (*[]model.ArticleComment, error) {
 	condition := Bool(true)
 
 	if listComments.ArticleID != nil {
-		condition = condition.AND(Comment.ArticleID.EQ(UUID(listComments.ArticleID)))
+		condition = condition.AND(ArticleComment.ArticleID.EQ(UUID(listComments.ArticleID)))
 	}
 
-	var comments []model.Comment
+	var comments []model.ArticleComment
 
-	listCommentsStmt := SELECT(Comment.AllColumns).FROM(Comment).WHERE(condition).ORDER_BY(Comment.CreatedAt.DESC())
+	listCommentsStmt := SELECT(ArticleComment.AllColumns).FROM(ArticleComment).WHERE(condition).ORDER_BY(ArticleComment.CreatedAt.DESC())
 
 	err := listCommentsStmt.QueryContext(ctx, articlesService.db, &comments)
 	if err != nil {
@@ -360,7 +360,7 @@ func (articlesService *ArticlesService) ListComments(ctx context.Context, listCo
 func (articlesService *ArticlesService) DeleteComment(ctx context.Context, commentId uuid.UUID) error {
 	articlesService.logger.InfoContext(ctx, "Deleting comment", "commentId", commentId)
 
-	deleteCommentStmt := Comment.DELETE().WHERE(Comment.ID.EQ(UUID(commentId)))
+	deleteCommentStmt := ArticleComment.DELETE().WHERE(ArticleComment.ID.EQ(UUID(commentId)))
 
 	deleteCommentSqlResult, err := deleteCommentStmt.ExecContext(ctx, articlesService.db)
 	if err != nil {
@@ -401,12 +401,12 @@ func (articlesService *ArticlesService) FavoriteArticle(ctx context.Context, use
 		return err
 	}
 
-	favorite := model.Favorite{
+	favorite := model.ArticleFavorite{
 		UserID:    &user.ID,
 		ArticleID: &article.ID,
 	}
 
-	insertFavoriteStmt := Favorite.INSERT(Favorite.UserID, Favorite.ArticleID).MODEL(favorite)
+	insertFavoriteStmt := ArticleFavorite.INSERT(ArticleFavorite.UserID, ArticleFavorite.ArticleID).MODEL(favorite)
 
 	_, err = insertFavoriteStmt.ExecContext(ctx, articlesService.db)
 	if err != nil {
@@ -428,7 +428,7 @@ func (articlesService *ArticlesService) UnfavoriteArticle(ctx context.Context, u
 		return nil
 	}
 
-	deleteFavoriteStmt := Favorite.DELETE().WHERE(Favorite.UserID.EQ(UUID(userId)).AND(Favorite.ArticleID.EQ(UUID(articleId))))
+	deleteFavoriteStmt := ArticleFavorite.DELETE().WHERE(ArticleFavorite.UserID.EQ(UUID(userId)).AND(ArticleFavorite.ArticleID.EQ(UUID(articleId))))
 
 	_, err = deleteFavoriteStmt.ExecContext(ctx, articlesService.db)
 	if err != nil {
@@ -443,7 +443,7 @@ func (articlesService *ArticlesService) IsFavorite(ctx context.Context, userId u
 		IsFavorite bool
 	}
 
-	isFavoriteStmt := SELECT(EXISTS(Favorite.SELECT(Favorite.ID).WHERE(Favorite.UserID.EQ(UUID(userId)).AND(Favorite.ArticleID.EQ(UUID(articleId))))).AS("is_favorite"))
+	isFavoriteStmt := SELECT(EXISTS(ArticleFavorite.SELECT(ArticleFavorite.ID).WHERE(ArticleFavorite.UserID.EQ(UUID(userId)).AND(ArticleFavorite.ArticleID.EQ(UUID(articleId))))).AS("is_favorite"))
 
 	err := isFavoriteStmt.QueryContext(ctx, articlesService.db, &isFavoriteDest)
 	if err != nil {
@@ -458,7 +458,7 @@ func (articlesService *ArticlesService) GetFavoritesCount(ctx context.Context, a
 		FavoritesCount int
 	}
 
-	isFavoriteStmt := SELECT(COUNT(STAR).AS("favorites_count")).FROM(Favorite).WHERE(Favorite.ArticleID.EQ(UUID(articleId)))
+	isFavoriteStmt := SELECT(COUNT(STAR).AS("favorites_count")).FROM(ArticleFavorite).WHERE(ArticleFavorite.ArticleID.EQ(UUID(articleId)))
 
 	err := isFavoriteStmt.QueryContext(ctx, articlesService.db, &favoritesCountDest)
 	if err != nil {
